@@ -2,6 +2,10 @@
   "uuid": "window-control@hko9890",
   "name": "Window Control",
   "description": "D-Bus interface for listing and controlling windows",
-  "shell-version": ["45", "46", "47"],
-  "version": 2
+  "shell-version": [
+    "45",
+    "46",
+    "47"
+  ],
+  "version": 3
 }
