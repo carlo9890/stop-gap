@@ -356,13 +356,10 @@ class WindowControlService {
         console.log(`[Window Control] List() called`);
         try {
             const windows = this._getAllWindows();
-            const result = [];
-            
-            for (const win of windows) {
+            const result = windows.map(win => {
                 const workspace = win.get_workspace();
                 const workspaceIndex = win.is_on_all_workspaces() ? -1 : (workspace ? workspace.index() : -1);
-                
-                result.push(new GLib.Variant('(tssssbiiii)', [
+                return [
                     win.get_id(),                              // t - window ID
                     win.get_title() || '',                     // s - title
                     win.get_wm_class() || '',                  // s - wm_class
@@ -373,14 +370,13 @@ class WindowControlService {
                     win.get_monitor(),                         // i - monitor index
                     win.get_pid(),                             // i - PID
                     win.get_window_type(),                     // i - window type enum
-                ]));
-            }
-            
+                ];
+            });
             console.log(`[Window Control] List() returning ${result.length} windows`);
-            return new GLib.Variant('(a(tssssbiiii))', [result]);
+            return [result];  // Return array wrapped in array (for D-Bus tuple)
         } catch (e) {
             console.error(`[Window Control] List() error: ${e.message}`);
-            return new GLib.Variant('(a(tssssbiiii))', [[]]);
+            return [[]];
         }
     }
 

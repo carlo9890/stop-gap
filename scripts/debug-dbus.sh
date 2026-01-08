@@ -48,72 +48,72 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "=== GetGeometry $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Activate $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Activate" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Activate" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Focus $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Focus" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Focus" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Minimize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Minimize" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Minimize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Unminimize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Unminimize" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Unminimize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Maximize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Maximize" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Maximize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Unmaximize $WINDOW_ID ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Unmaximize" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Unmaximize" "$WINDOW_ID" 2>&1
         sleep 0.5
         echo ""
 
         echo "=== SetAbove $WINDOW_ID true ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetAbove" "uint64:$WINDOW_ID" "true" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetAbove" "$WINDOW_ID" true 2>&1
         sleep 0.5
         echo ""
 
         echo "=== SetAbove $WINDOW_ID false ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetAbove" "uint64:$WINDOW_ID" "false" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.SetAbove" "$WINDOW_ID" false 2>&1
         sleep 0.5
         echo ""
 
         echo "=== Move $WINDOW_ID 100 100 ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Move" "uint64:$WINDOW_ID" "int32:100" "int32:100" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Move" "$WINDOW_ID" 100 100 2>&1
         sleep 0.5
         echo ""
 
         echo "=== GetGeometry after Move ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Resize $WINDOW_ID 800 600 ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Resize" "uint64:$WINDOW_ID" "int32:800" "int32:600" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Resize" "$WINDOW_ID" 800 600 2>&1
         sleep 0.5
         echo ""
 
         echo "=== GetGeometry after Resize ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== MoveResize $WINDOW_ID 50 50 640 480 ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveResize" "uint64:$WINDOW_ID" "int32:50" "int32:50" "int32:640" "int32:480" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveResize" "$WINDOW_ID" 50 50 640 480 2>&1
         sleep 0.5
         echo ""
 
         echo "=== GetGeometry after MoveResize ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "uint64:$WINDOW_ID" 2>&1
+        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.GetGeometry" "$WINDOW_ID" 2>&1
         echo ""
 
         echo "=== Final ListDetailed ==="
@@ -126,7 +126,7 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
     fi
 
     echo "=== Test Invalid Window ID ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Activate" "uint64:999999999" 2>&1
+    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Activate" 999999999 2>&1
     echo ""
 
     echo "=== Done ==="
