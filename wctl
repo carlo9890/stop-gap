@@ -164,107 +164,107 @@ cmd_list() {
     content="${content#\[}"
     content="${content%\]}"
     
-    # Process each window tuple using awk
-    # This is complex because we need to handle nested commas in strings
+    # Process each window tuple using POSIX-compatible awk
+    # Uses gsub/sub instead of gawk-specific match() with capture groups
     echo "$content" | awk '
     BEGIN {
         RS = "\\), \\("   # Split on tuple boundaries
         FS = ""
     }
+    
+    # Helper: extract number after optional "uint64 " or "int32 " prefix
+    function extract_number(s, result) {
+        # Remove type prefix if present
+        gsub(/^uint64 /, "", s)
+        gsub(/^int32 /, "", s)
+        # Match leading number (possibly negative)
+        if (match(s, /^-?[0-9]+/)) {
+            return substr(s, RSTART, RLENGTH)
+        }
+        return ""
+    }
+    
+    # Helper: extract quoted string (returns content without quotes)
+    function extract_quoted(s, result) {
+        if (match(s, /^'\''[^'\'']*'\''/)) {
+            result = substr(s, RSTART + 1, RLENGTH - 2)
+            return result
+        }
+        return ""
+    }
+    
+    # Helper: find position after quoted string
+    function skip_quoted(s) {
+        if (match(s, /^'\''[^'\'']*'\''/)) {
+            return RLENGTH
+        }
+        return 0
+    }
+    
     {
         # Clean up the record
         gsub(/^\(/, "", $0)
         gsub(/\)$/, "", $0)
         
-        # Parse fields manually to handle quoted strings
         line = $0
         
-        # Field 1: ID (uint64 NUMBER)
-        match(line, /uint64 ([0-9]+)/, arr)
-        if (RSTART > 0) {
-            id = arr[1]
-            line = substr(line, RSTART + RLENGTH)
-        } else {
-            # Try without uint64 prefix
-            match(line, /^([0-9]+)/, arr)
-            id = arr[1]
-            line = substr(line, RSTART + RLENGTH)
-        }
-        
-        # Skip comma
+        # Field 1: ID (uint64 NUMBER or just NUMBER)
+        id = extract_number(line)
+        # Skip past the ID field
+        sub(/^(uint64 )?[0-9]+/, "", line)
         sub(/^, */, "", line)
         
         # Field 2: title (quoted string)
-        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
-            title = arr[1]
-            line = substr(line, RSTART + RLENGTH)
-        } else {
-            title = ""
+        title = extract_quoted(line)
+        skip_len = skip_quoted(line)
+        if (skip_len > 0) {
+            line = substr(line, skip_len + 1)
         }
-        
-        # Skip comma
         sub(/^, */, "", line)
         
         # Field 3: wm_class (quoted string)
-        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
-            wm_class = arr[1]
-            line = substr(line, RSTART + RLENGTH)
-        } else {
-            wm_class = ""
+        wm_class = extract_quoted(line)
+        skip_len = skip_quoted(line)
+        if (skip_len > 0) {
+            line = substr(line, skip_len + 1)
         }
-        
-        # Skip comma
         sub(/^, */, "", line)
         
         # Field 4: wm_class_instance (quoted string) - skip
-        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
-            line = substr(line, RSTART + RLENGTH)
+        skip_len = skip_quoted(line)
+        if (skip_len > 0) {
+            line = substr(line, skip_len + 1)
         }
-        
-        # Skip comma
         sub(/^, */, "", line)
         
         # Field 5: sandboxed_app_id (quoted string) - skip
-        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
-            line = substr(line, RSTART + RLENGTH)
+        skip_len = skip_quoted(line)
+        if (skip_len > 0) {
+            line = substr(line, skip_len + 1)
         }
-        
-        # Skip comma
         sub(/^, */, "", line)
         
         # Field 6: is_focused (true/false)
-        if (match(line, /^(true|false)/, arr)) {
-            focused = (arr[1] == "true") ? "*" : ""
-            line = substr(line, RSTART + RLENGTH)
-        } else {
+        focused = ""
+        if (match(line, /^true/)) {
+            focused = "*"
+            line = substr(line, 5)
+        } else if (match(line, /^false/)) {
             focused = ""
+            line = substr(line, 6)
         }
-        
-        # Skip comma
         sub(/^, */, "", line)
         
         # Field 7: workspace (int32 NUMBER or just NUMBER)
-        if (match(line, /int32 (-?[0-9]+)/, arr)) {
-            workspace = arr[1]
-            line = substr(line, RSTART + RLENGTH)
-        } else if (match(line, /^(-?[0-9]+)/, arr)) {
-            workspace = arr[1]
-            line = substr(line, RSTART + RLENGTH)
-        } else {
-            workspace = "-"
-        }
-        
-        # Skip comma
+        workspace = extract_number(line)
+        if (workspace == "") workspace = "-"
+        # Skip past workspace field
+        sub(/^(int32 )?-?[0-9]+/, "", line)
         sub(/^, */, "", line)
         
         # Field 8: monitor (int32 NUMBER or just NUMBER)
-        if (match(line, /int32 (-?[0-9]+)/, arr)) {
-            monitor = arr[1]
-        } else if (match(line, /^(-?[0-9]+)/, arr)) {
-            monitor = arr[1]
-        } else {
-            monitor = "-"
-        }
+        monitor = extract_number(line)
+        if (monitor == "") monitor = "-"
         
         # Truncate title if too long
         if (length(title) > 37) {
@@ -453,7 +453,7 @@ cmd_geometry() {
     [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
     
     local raw
-    raw=$(dbus_call "GetGeometry" "uint64:$id")
+    raw=$(dbus_call "GetGeometry" "$id")
     
     # Output format: (int32 x, int32 y, int32 width, int32 height)
     # Parse values
