@@ -45,6 +45,7 @@ assert_contains "$WCTL_OUTPUT" "ENVIRONMENT:" "Help contains ENVIRONMENT section
 assert_contains "$WCTL_OUTPUT" "list" "Help mentions list command"
 assert_contains "$WCTL_OUTPUT" "focused" "Help mentions focused command"
 assert_contains "$WCTL_OUTPUT" "activate" "Help mentions activate command"
-assert_contains "$WCTL_OUTPUT" "geometry" "Help mentions geometry command"
+assert_contains "$WCTL_OUTPUT" "info" "Help mentions info command"
+assert_contains "$WCTL_OUTPUT" "move" "Help mentions move command"
 
 summary

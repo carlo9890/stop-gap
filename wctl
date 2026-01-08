@@ -80,7 +80,8 @@ USAGE:
 LISTING COMMANDS:
     list              List all windows in a table format
     list --json       List all windows with detailed JSON output
-    focused           Show the currently focused window
+    focused           Show detailed info for the focused window
+    focused --json    Show focused window info as JSON
 
 ACTIVATION COMMANDS:
     activate <ID>           Activate by window ID
@@ -90,13 +91,15 @@ ACTIVATION COMMANDS:
     activate -p <PID>       Activate by process ID
     focus <ID>              Focus window by ID (without raising)
 
+INFO COMMANDS:
+    info <ID>             Show detailed window information
+    info <ID> --json      Show window information as JSON
+
 GEOMETRY COMMANDS:
-    geometry <ID>                       Get window geometry (x y width height)
     move <ID> <X> <Y>                   Move window to position
     resize <ID> <WIDTH> <HEIGHT>        Resize window
     move-resize <ID> <X> <Y> <W> <H>    Move and resize atomically
     to-monitor <ID> <MONITOR>           Move window to monitor index
-    to-workspace <ID> <WORKSPACE>       Move window to workspace index
 
 STATE COMMANDS:
     minimize <ID>           Minimize window
@@ -115,16 +118,17 @@ OTHER:
 EXAMPLES:
     wctl list                         # Show all windows
     wctl list --json                  # Get detailed JSON output
-    wctl focused                      # Show focused window info
+    wctl focused                      # Show detailed focused window info
+    wctl focused --json               # Get focused window as JSON
     wctl activate 12345               # Activate window by ID
     wctl activate -c Firefox          # Activate Firefox window
     wctl activate -s "Visual"         # Activate window with "Visual" in title
-    wctl geometry 12345               # Get window position/size
+    wctl info 12345                   # Show detailed window info
+    wctl info 12345 --json            # Get window info as JSON
     wctl move 12345 100 100           # Move window to (100, 100)
     wctl resize 12345 800 600         # Resize to 800x600
     wctl maximize 12345               # Maximize window
     wctl above 12345 on               # Set always-on-top
-    wctl to-workspace 12345 2         # Move to workspace 2
     wctl close 12345                  # Close window
 
 ENVIRONMENT:
@@ -354,7 +358,7 @@ cmd_activate() {
         id)
             # Validate numeric ID
             [[ ! "$value" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-            raw=$(dbus_call "Activate" "uint64:$value")
+            raw=$(dbus_call "Activate" "$value")
             ;;
         title)
             raw=$(dbus_call "ActivateByTitle" "$value")
@@ -368,7 +372,7 @@ cmd_activate() {
         pid)
             # Validate numeric PID
             [[ ! "$value" =~ ^[0-9]+$ ]] && die "PID must be a number"
-            raw=$(dbus_call "ActivateByPid" "int32:$value")
+            raw=$(dbus_call "ActivateByPid" "$value")
             ;;
     esac
     
@@ -389,7 +393,7 @@ cmd_focus() {
     [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
     
     local raw
-    raw=$(dbus_call "Focus" "uint64:$id")
+    raw=$(dbus_call "Focus" "$id")
     
     # Parse result - format is (true,) or (false,)
     if [[ "$raw" == "(true,)" ]]; then
@@ -401,14 +405,31 @@ cmd_focus() {
 }
 
 # Show focused window
+# Usage: cmd_focused [--json]
 cmd_focused() {
+    local json_output=false
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json)
+                json_output=true
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                die "Unexpected argument: $1"
+                ;;
+        esac
+    done
+    
     local raw
     raw=$(dbus_call "GetFocused")
     
     # Output format: (uint64 ID, 'title', 'wm_class')
-    # Extract values using pattern matching
-    
-    # Get window ID
+    # Extract window ID
     local id
     if [[ "$raw" =~ uint64\ ([0-9]+) ]]; then
         id="${BASH_REMATCH[1]}"
@@ -424,64 +445,121 @@ cmd_focused() {
         return
     fi
     
-    # Extract title (first quoted string after ID)
-    local title=""
-    if [[ "$raw" =~ ,\ \'([^\']*)\',\ \' ]]; then
-        title="${BASH_REMATCH[1]}"
+    # Delegate to cmd_info with the focused window ID
+    if [[ "$json_output" == true ]]; then
+        cmd_info "$id" --json
+    else
+        cmd_info "$id"
     fi
+}
+
+# ============================================================================
+# Info Commands
+# ============================================================================
+
+# Show detailed info for a single window
+# Usage: cmd_info <ID> [--json]
+cmd_info() {
+    local id=""
+    local json_output=false
     
-    # Extract wm_class (second quoted string)
-    local wm_class=""
-    # Get everything after the title
-    local rest="${raw#*\', \'}"
-    if [[ "$rest" =~ ^([^\']*)\' ]]; then
-        wm_class="${BASH_REMATCH[1]}"
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json)
+                json_output=true
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                if [[ -z "$id" ]]; then
+                    id="$1"
+                else
+                    die "Unexpected argument: $1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    [[ -z "$id" ]] && die "Usage: wctl info <ID> [--json]"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    # Get detailed window list as JSON
+    local raw
+    raw=$(dbus_call "ListDetailed")
+    
+    # Extract the JSON string from GVariant wrapper
+    local json="${raw#(\'}"
+    json="${json%\',)}"
+    json="${json//\\\'/\'}"
+    
+    # Find the window with matching ID using jq
+    local window
+    window=$(echo "$json" | jq -e --arg id "$id" '.[] | select(.id == ($id | tonumber))' 2>/dev/null) || {
+        echo "Window not found: $id"
+        exit 1
+    }
+    
+    if [[ "$json_output" == true ]]; then
+        # Output raw JSON for this window
+        echo "$window"
+    else
+        # Output table format
+        local title wm_class wm_instance pid workspace monitor focused
+        local x y width height states
+        
+        title=$(echo "$window" | jq -r '.title')
+        wm_class=$(echo "$window" | jq -r '.wm_class')
+        wm_instance=$(echo "$window" | jq -r '.wm_class_instance')
+        pid=$(echo "$window" | jq -r '.pid')
+        workspace=$(echo "$window" | jq -r '.workspace_index')
+        monitor=$(echo "$window" | jq -r '.monitor_index')
+        focused=$(echo "$window" | jq -r 'if .has_focus then "yes" else "no" end')
+        x=$(echo "$window" | jq -r '.frame_rect.x')
+        y=$(echo "$window" | jq -r '.frame_rect.y')
+        width=$(echo "$window" | jq -r '.frame_rect.width')
+        height=$(echo "$window" | jq -r '.frame_rect.height')
+        
+        # Build states list from boolean flags
+        local state_list=()
+        [[ $(echo "$window" | jq -r '.is_maximized') == "true" ]] && state_list+=("maximized")
+        [[ $(echo "$window" | jq -r '.is_minimized') == "true" ]] && state_list+=("minimized")
+        [[ $(echo "$window" | jq -r '.is_fullscreen') == "true" ]] && state_list+=("fullscreen")
+        [[ $(echo "$window" | jq -r '.is_above') == "true" ]] && state_list+=("above")
+        [[ $(echo "$window" | jq -r '.is_on_all_workspaces') == "true" ]] && state_list+=("sticky")
+        
+        if [[ ${#state_list[@]} -gt 0 ]]; then
+            states=$(IFS=', '; echo "${state_list[*]}")
+        else
+            states="none"
+        fi
+        
+        # Format workspace display
+        if [[ "$workspace" == "-1" ]]; then
+            workspace="all"
+        fi
+        
+        # Print table output
+        echo "Window: $id"
+        echo "Title: $title"
+        echo "Class: $wm_class"
+        echo "Instance: $wm_instance"
+        echo "PID: $pid"
+        echo "Workspace: $workspace"
+        echo "Monitor: $monitor"
+        echo "Focused: $focused"
+        echo "Position: $x, $y"
+        echo "Size: $width x $height"
+        echo "States: $states"
     fi
-    
-    echo "ID: ${id}, Title: ${title}, Class: ${wm_class}"
 }
 
 # ============================================================================
 # Geometry Commands
 # ============================================================================
-
-# Get window geometry
-cmd_geometry() {
-    local id="${1:-}"
-    
-    [[ -z "$id" ]] && die "Usage: wctl geometry <ID>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    
-    local raw
-    raw=$(dbus_call "GetGeometry" "$id")
-    
-    # Output format: (int32 x, int32 y, int32 width, int32 height)
-    # Parse values
-    local x y width height
-    
-    if [[ "$raw" =~ int32\ (-?[0-9]+),\ int32\ (-?[0-9]+),\ int32\ (-?[0-9]+),\ int32\ (-?[0-9]+) ]]; then
-        x="${BASH_REMATCH[1]}"
-        y="${BASH_REMATCH[2]}"
-        width="${BASH_REMATCH[3]}"
-        height="${BASH_REMATCH[4]}"
-    elif [[ "$raw" =~ \((-?[0-9]+),\ (-?[0-9]+),\ (-?[0-9]+),\ (-?[0-9]+)\) ]]; then
-        x="${BASH_REMATCH[1]}"
-        y="${BASH_REMATCH[2]}"
-        width="${BASH_REMATCH[3]}"
-        height="${BASH_REMATCH[4]}"
-    else
-        die "Failed to parse geometry response"
-    fi
-    
-    # Check for not found (-1, -1, -1, -1)
-    if [[ "$x" == "-1" && "$y" == "-1" && "$width" == "-1" && "$height" == "-1" ]]; then
-        echo "Window not found"
-        exit 1
-    fi
-    
-    # Output space-separated for easy parsing
-    echo "$x $y $width $height"
-}
 
 # Move window
 cmd_move() {
@@ -495,7 +573,7 @@ cmd_move() {
     [[ ! "$y" =~ ^-?[0-9]+$ ]] && die "Y coordinate must be a number"
     
     local raw
-    raw=$(dbus_call "Move" "uint64:$id" "int32:$x" "int32:$y")
+    raw=$(dbus_call "Move" "$id" "$x" "$y")
     
     if [[ "$raw" == "(true,)" ]]; then
         echo "Window moved"
@@ -517,7 +595,7 @@ cmd_resize() {
     [[ ! "$height" =~ ^[0-9]+$ ]] && die "Height must be a positive number"
     
     local raw
-    raw=$(dbus_call "Resize" "uint64:$id" "int32:$width" "int32:$height")
+    raw=$(dbus_call "Resize" "$id" "$width" "$height")
     
     if [[ "$raw" == "(true,)" ]]; then
         echo "Window resized"
@@ -544,7 +622,7 @@ cmd_move_resize() {
     [[ ! "$height" =~ ^[0-9]+$ ]] && die "Height must be a positive number"
     
     local raw
-    raw=$(dbus_call "MoveResize" "uint64:$id" "int32:$x" "int32:$y" "int32:$width" "int32:$height")
+    raw=$(dbus_call "MoveResize" "$id" "$x" "$y" "$width" "$height")
     
     if [[ "$raw" == "(true,)" ]]; then
         echo "Window moved and resized"
@@ -564,7 +642,7 @@ cmd_to_monitor() {
     [[ ! "$monitor" =~ ^[0-9]+$ ]] && die "Monitor index must be a non-negative number"
     
     local raw
-    raw=$(dbus_call "MoveToMonitor" "uint64:$id" "int32:$monitor")
+    raw=$(dbus_call "MoveToMonitor" "$id" "$monitor")
     
     if [[ "$raw" == "(true,)" ]]; then
         echo "Window moved to monitor $monitor"
@@ -574,25 +652,7 @@ cmd_to_monitor() {
     fi
 }
 
-# Move window to workspace
-cmd_to_workspace() {
-    local id="${1:-}"
-    local workspace="${2:-}"
-    
-    [[ -z "$id" || -z "$workspace" ]] && die "Usage: wctl to-workspace <ID> <WORKSPACE>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    [[ ! "$workspace" =~ ^[0-9]+$ ]] && die "Workspace index must be a non-negative number"
-    
-    local raw
-    raw=$(dbus_call "MoveToWorkspace" "uint64:$id" "int32:$workspace")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window moved to workspace $workspace"
-    else
-        echo "Window not found"
-        exit 1
-    fi
-}
+
 
 # ============================================================================
 # State Commands
@@ -609,7 +669,7 @@ cmd_simple_state() {
     [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
     
     local raw
-    raw=$(dbus_call "$method" "uint64:$id")
+    raw=$(dbus_call "$method" "$id")
     
     if [[ "$raw" == "(true,)" ]]; then
         echo "$success_msg"
@@ -669,7 +729,7 @@ cmd_above() {
     esac
     
     local raw
-    raw=$(dbus_call "SetAbove" "uint64:$id" "$above")
+    raw=$(dbus_call "SetAbove" "$id" "$above")
     
     if [[ "$raw" == "(true,)" ]]; then
         if [[ "$above" == "true" ]]; then
@@ -705,7 +765,7 @@ cmd_sticky() {
     esac
     
     local raw
-    raw=$(dbus_call "SetSticky" "uint64:$id" "$sticky")
+    raw=$(dbus_call "SetSticky" "$id" "$sticky")
     
     if [[ "$raw" == "(true,)" ]]; then
         if [[ "$sticky" == "true" ]]; then
@@ -740,7 +800,12 @@ main() {
             fi
             ;;
         focused)
-            cmd_focused
+            cmd_focused "$@"
+            ;;
+        
+        # Info commands
+        info)
+            cmd_info "$@"
             ;;
         
         # Activation commands
@@ -752,9 +817,6 @@ main() {
             ;;
         
         # Geometry commands
-        geometry)
-            cmd_geometry "$@"
-            ;;
         move)
             cmd_move "$@"
             ;;
@@ -766,9 +828,6 @@ main() {
             ;;
         to-monitor)
             cmd_to_monitor "$@"
-            ;;
-        to-workspace)
-            cmd_to_workspace "$@"
             ;;
         
         # State commands

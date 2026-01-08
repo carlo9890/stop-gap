@@ -14,31 +14,40 @@ echo "========================================"
 # Check if extension is running
 require_extension
 
+# ============================================================================
 # Test: wctl focused returns exit code 0
+# ============================================================================
+
 run_wctl focused
 assert_exit_code 0 "$WCTL_EXIT_CODE" "wctl focused exits with code 0"
 
+# ============================================================================
 # Test: Output format validation
-# Expected format: "ID: <number>, Title: <string>, Class: <string>"
-# OR: "No window focused"
+# ============================================================================
 
 if [[ "$WCTL_OUTPUT" == "No window focused" ]]; then
     pass "Output is 'No window focused' (valid when no window has focus)"
 else
-    # Validate the detailed format
+    # New format: Full info output like 'wctl info'
     
-    # Test: Output contains "ID: "
-    assert_contains "$WCTL_OUTPUT" "ID: " "Output contains 'ID:' field"
+    # Test: Output contains expected fields
+    assert_contains "$WCTL_OUTPUT" "Window:" "Output contains 'Window:' field"
+    assert_contains "$WCTL_OUTPUT" "Title:" "Output contains 'Title:' field"
+    assert_contains "$WCTL_OUTPUT" "Class:" "Output contains 'Class:' field"
+    assert_contains "$WCTL_OUTPUT" "Instance:" "Output contains 'Instance:' field"
+    assert_contains "$WCTL_OUTPUT" "PID:" "Output contains 'PID:' field"
+    assert_contains "$WCTL_OUTPUT" "Workspace:" "Output contains 'Workspace:' field"
+    assert_contains "$WCTL_OUTPUT" "Monitor:" "Output contains 'Monitor:' field"
+    assert_contains "$WCTL_OUTPUT" "Focused:" "Output contains 'Focused:' field"
+    assert_contains "$WCTL_OUTPUT" "Position:" "Output contains 'Position:' field"
+    assert_contains "$WCTL_OUTPUT" "Size:" "Output contains 'Size:' field"
+    assert_contains "$WCTL_OUTPUT" "States:" "Output contains 'States:' field"
     
-    # Test: Output contains "Title: "
-    assert_contains "$WCTL_OUTPUT" "Title: " "Output contains 'Title:' field"
+    # Test: Focused field should show "yes" for focused window
+    assert_contains "$WCTL_OUTPUT" "Focused: yes" "Focused field shows 'yes'"
     
-    # Test: Output contains "Class: "
-    assert_contains "$WCTL_OUTPUT" "Class: " "Output contains 'Class:' field"
-    
-    # Test: ID is a positive integer
-    # Extract ID using regex
-    if [[ "$WCTL_OUTPUT" =~ ID:\ ([0-9]+), ]]; then
+    # Test: Extract window ID from output
+    if [[ "$WCTL_OUTPUT" =~ Window:\ ([0-9]+) ]]; then
         window_id="${BASH_REMATCH[1]}"
         if [[ "$window_id" -gt 0 ]]; then
             pass "Window ID is a positive integer: $window_id"
@@ -50,15 +59,37 @@ else
         fail "Could not extract window ID from output"
         echo "  Output: $WCTL_OUTPUT"
     fi
+fi
+
+# ============================================================================
+# Test: wctl focused --json
+# ============================================================================
+
+run_wctl focused --json
+if [[ "$WCTL_OUTPUT" == "No window focused" ]]; then
+    pass "focused --json shows 'No window focused' when no focus (expected)"
+else
+    assert_exit_code 0 "$WCTL_EXIT_CODE" "focused --json exits with code 0"
+    assert_json_valid "$WCTL_OUTPUT" "focused --json returns valid JSON"
     
-    # Test: Format matches expected pattern
-    # Pattern: ID: <digits>, Title: <anything>, Class: <anything>
-    if [[ "$WCTL_OUTPUT" =~ ^ID:\ [0-9]+,\ Title:\ .+,\ Class:\ .+$ ]]; then
-        pass "Output matches expected format"
-    else
-        fail "Output format doesn't match expected pattern"
-        echo "  Expected: ID: <number>, Title: <string>, Class: <string>"
-        echo "  Actual:   $WCTL_OUTPUT"
+    # Check JSON structure
+    if command -v jq &>/dev/null; then
+        # Check that the window is focused
+        has_focus=$(echo "$WCTL_OUTPUT" | jq -r '.has_focus')
+        assert_equals "$has_focus" "true" "JSON shows window has focus"
+        
+        # Check for expected JSON fields
+        has_id=$(echo "$WCTL_OUTPUT" | jq 'has("id")')
+        assert_equals "$has_id" "true" "JSON has 'id' field"
+        
+        has_title=$(echo "$WCTL_OUTPUT" | jq 'has("title")')
+        assert_equals "$has_title" "true" "JSON has 'title' field"
+        
+        has_wm_class=$(echo "$WCTL_OUTPUT" | jq 'has("wm_class")')
+        assert_equals "$has_wm_class" "true" "JSON has 'wm_class' field"
+        
+        has_frame_rect=$(echo "$WCTL_OUTPUT" | jq 'has("frame_rect")')
+        assert_equals "$has_frame_rect" "true" "JSON has 'frame_rect' field"
     fi
 fi
 

@@ -14,7 +14,8 @@ stop-gap/
 │   └── README.md              # Extension-specific docs
 ├── scripts/                   # Build and dev scripts
 │   ├── build.sh               # Build distributable zip
-│   └── update.sh              # Local dev update script
+│   ├── start-nested.sh        # Start nested GNOME Shell session
+│   └── debug-dbus.sh          # Debug D-Bus interface
 ├── dist/                      # Build output (gitignored)
 ├── wctl                       # CLI wrapper script
 ├── README.md                  # Project documentation
@@ -24,22 +25,6 @@ stop-gap/
 
 ## Development Workflow
 
-### Testing Extension Changes
-
-After modifying `window-control@hko9890/extension.js`:
-
-```bash
-# Full update: validate, install, reload, test
-./scripts/update.sh
-
-# Or step by step:
-./scripts/update.sh validate   # Check files are valid
-./scripts/update.sh install    # Copy to ~/.local/share/gnome-shell/extensions/
-./scripts/update.sh reload     # Disable and re-enable extension
-./scripts/update.sh test       # Test D-Bus interface
-./scripts/update.sh logs       # Check for errors
-```
-
 ### Testing Code Changes (Nested Session)
 
 Since disable/enable doesn't reload JS code, use a **nested GNOME Shell session**:
@@ -47,10 +32,10 @@ Since disable/enable doesn't reload JS code, use a **nested GNOME Shell session*
 ```bash
 # 1. Make your code changes
 # 2. Install the updated files
-./scripts/update.sh install
+./scripts/build.sh install
 
 # 3. Start a nested GNOME Shell (runs in a window)
-./scripts/update.sh nested
+./scripts/start-nested.sh
 
 # 4. Inside the nested session, open a terminal and enable:
 gnome-extensions enable window-control@hko9890
@@ -60,6 +45,14 @@ gnome-extensions enable window-control@hko9890
 ```
 
 The nested session runs GNOME Shell in a window, isolated from your main session. All logs appear in the terminal that started it.
+
+### Testing D-Bus Interface
+
+Use the debug script to test D-Bus methods:
+
+```bash
+./scripts/debug-dbus.sh
+```
 
 ### Building for Distribution
 
@@ -127,7 +120,7 @@ gdbus call --session --dest org.gnome.Shell \
 
 **Important**: Unlike some plugin systems, `gnome-extensions disable/enable` does NOT reload JavaScript code from disk. It only calls `disable()` and `enable()` on the already-loaded code. To test actual code changes, you must restart GNOME Shell (log out/in on Wayland).
 
-**Tip**: Use a **nested GNOME Shell session** instead of logging out/in. Run `./scripts/update.sh nested` to start GNOME Shell in a window for testing.
+**Tip**: Use a **nested GNOME Shell session** instead of logging out/in. Run `./scripts/start-nested.sh` to start GNOME Shell in a window for testing.
 
 ### Logging
 
@@ -146,7 +139,7 @@ For production code, use `console.error()` sparingly for actual errors only.
 ### Common Issues
 
 1. **Extension not found**: Run `gnome-extensions list` - if not listed, need restart
-2. **D-Bus errors**: Check `./scripts/update.sh logs` for JavaScript errors
+2. **D-Bus errors**: Check `journalctl --user -b -g "Window Control" -f` for JavaScript errors
 3. **Methods returning wrong types**: GJS D-Bus has quirks with uint64 - use BigInt or GLib.Variant
 4. **Code changes not taking effect**: Need full GNOME Shell restart, not just disable/enable
 
