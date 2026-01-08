@@ -1,0 +1,813 @@
+#!/usr/bin/env bash
+#
+# wctl - Window Control CLI
+# A wrapper for the GNOME Shell Window Control D-Bus extension
+#
+
+set -euo pipefail
+
+# D-Bus service details
+DBUS_DEST="org.gnome.Shell.Extensions.WindowControl"
+DBUS_PATH="/org/gnome/Shell/Extensions/WindowControl"
+DBUS_IFACE="org.gnome.Shell.Extensions.WindowControl"
+
+# Colors for output (disabled if not a tty)
+if [[ -t 1 ]]; then
+    BOLD='\033[1m'
+    DIM='\033[2m'
+    GREEN='\033[32m'
+    YELLOW='\033[33m'
+    RED='\033[31m'
+    RESET='\033[0m'
+else
+    BOLD=''
+    DIM=''
+    GREEN=''
+    YELLOW=''
+    RED=''
+    RESET=''
+fi
+
+# Print error message and exit
+die() {
+    echo -e "${RED}Error:${RESET} $1" >&2
+    exit 1
+}
+
+# Call D-Bus method and return raw output
+# Usage: dbus_call METHOD [ARGS...]
+dbus_call() {
+    local method="$1"
+    shift
+    
+    local result
+    if ! result=$(gdbus call --session \
+        --dest "$DBUS_DEST" \
+        --object-path "$DBUS_PATH" \
+        --method "${DBUS_IFACE}.${method}" \
+        "$@" 2>&1); then
+        
+        # Check for common errors
+        if [[ "$result" == *"was not provided"* ]] || [[ "$result" == *"does not exist"* ]]; then
+            die "Window Control extension is not running. Enable it in GNOME Extensions."
+        fi
+        die "D-Bus call failed: $result"
+    fi
+    
+    echo "$result"
+}
+
+# Truncate string to max length with ellipsis
+truncate() {
+    local str="$1"
+    local max="$2"
+    
+    if [[ ${#str} -gt $max ]]; then
+        echo "${str:0:$((max-3))}..."
+    else
+        echo "$str"
+    fi
+}
+
+# Show help message
+show_help() {
+    cat << 'EOF'
+wctl - Window Control CLI
+
+USAGE:
+    wctl <COMMAND> [OPTIONS]
+
+LISTING COMMANDS:
+    list              List all windows in a table format
+    list --json       List all windows with detailed JSON output
+    focused           Show the currently focused window
+
+ACTIVATION COMMANDS:
+    activate <ID>           Activate by window ID
+    activate -t <TITLE>     Activate by exact title match
+    activate -s <SUBSTR>    Activate by title substring
+    activate -c <CLASS>     Activate by WM class
+    activate -p <PID>       Activate by process ID
+    focus <ID>              Focus window by ID (without raising)
+
+GEOMETRY COMMANDS:
+    geometry <ID>                       Get window geometry (x y width height)
+    move <ID> <X> <Y>                   Move window to position
+    resize <ID> <WIDTH> <HEIGHT>        Resize window
+    move-resize <ID> <X> <Y> <W> <H>    Move and resize atomically
+    to-monitor <ID> <MONITOR>           Move window to monitor index
+    to-workspace <ID> <WORKSPACE>       Move window to workspace index
+
+STATE COMMANDS:
+    minimize <ID>           Minimize window
+    unminimize <ID>         Restore from minimize
+    maximize <ID>           Maximize window
+    unmaximize <ID>         Restore from maximize
+    fullscreen <ID>         Make window fullscreen
+    unfullscreen <ID>       Exit fullscreen mode
+    above <ID> on|off       Set always-on-top state
+    sticky <ID> on|off      Set sticky (all workspaces) state
+    close <ID>              Close window (polite request)
+
+OTHER:
+    help                    Show this help message
+
+EXAMPLES:
+    wctl list                         # Show all windows
+    wctl list --json                  # Get detailed JSON output
+    wctl focused                      # Show focused window info
+    wctl activate 12345               # Activate window by ID
+    wctl activate -c Firefox          # Activate Firefox window
+    wctl activate -s "Visual"         # Activate window with "Visual" in title
+    wctl geometry 12345               # Get window position/size
+    wctl move 12345 100 100           # Move window to (100, 100)
+    wctl resize 12345 800 600         # Resize to 800x600
+    wctl maximize 12345               # Maximize window
+    wctl above 12345 on               # Set always-on-top
+    wctl to-workspace 12345 2         # Move to workspace 2
+    wctl close 12345                  # Close window
+
+ENVIRONMENT:
+    The Window Control GNOME Shell extension must be enabled.
+
+EOF
+}
+
+# List windows in table format
+cmd_list() {
+    local raw
+    raw=$(dbus_call "List")
+    
+    # gdbus output format: ([...],)
+    # Each window: (uint64 ID, 'title', 'wm_class', 'wm_class_instance', 'sandboxed_app_id', bool, int32, int32, int32, int32)
+    
+    # Print header
+    printf "${BOLD}%-12s %-40s %-20s %-10s %-8s %-7s${RESET}\n" \
+        "ID" "TITLE" "WM_CLASS" "WORKSPACE" "MONITOR" "FOCUSED"
+    printf "%s\n" "$(printf '%.0s-' {1..100})"
+    
+    # Parse the GVariant output
+    # Remove outer ([...],) wrapper and process each tuple
+    # The format is: (uint64 123, 'title', 'class', 'instance', 'sandbox', true/false, int32 0, int32 0, int32 1234, int32 0)
+    
+    # Extract the array content (between outer parentheses)
+    local content="${raw#(}"
+    content="${content%,)}"
+    
+    # Check for empty list
+    if [[ "$content" == "[]" ]] || [[ -z "$content" ]]; then
+        echo "No windows found."
+        return
+    fi
+    
+    # Remove outer brackets
+    content="${content#\[}"
+    content="${content%\]}"
+    
+    # Process each window tuple using awk
+    # This is complex because we need to handle nested commas in strings
+    echo "$content" | awk '
+    BEGIN {
+        RS = "\\), \\("   # Split on tuple boundaries
+        FS = ""
+    }
+    {
+        # Clean up the record
+        gsub(/^\(/, "", $0)
+        gsub(/\)$/, "", $0)
+        
+        # Parse fields manually to handle quoted strings
+        line = $0
+        
+        # Field 1: ID (uint64 NUMBER)
+        match(line, /uint64 ([0-9]+)/, arr)
+        if (RSTART > 0) {
+            id = arr[1]
+            line = substr(line, RSTART + RLENGTH)
+        } else {
+            # Try without uint64 prefix
+            match(line, /^([0-9]+)/, arr)
+            id = arr[1]
+            line = substr(line, RSTART + RLENGTH)
+        }
+        
+        # Skip comma
+        sub(/^, */, "", line)
+        
+        # Field 2: title (quoted string)
+        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
+            title = arr[1]
+            line = substr(line, RSTART + RLENGTH)
+        } else {
+            title = ""
+        }
+        
+        # Skip comma
+        sub(/^, */, "", line)
+        
+        # Field 3: wm_class (quoted string)
+        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
+            wm_class = arr[1]
+            line = substr(line, RSTART + RLENGTH)
+        } else {
+            wm_class = ""
+        }
+        
+        # Skip comma
+        sub(/^, */, "", line)
+        
+        # Field 4: wm_class_instance (quoted string) - skip
+        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
+            line = substr(line, RSTART + RLENGTH)
+        }
+        
+        # Skip comma
+        sub(/^, */, "", line)
+        
+        # Field 5: sandboxed_app_id (quoted string) - skip
+        if (match(line, /^'\''([^'\'']*)'\''/, arr)) {
+            line = substr(line, RSTART + RLENGTH)
+        }
+        
+        # Skip comma
+        sub(/^, */, "", line)
+        
+        # Field 6: is_focused (true/false)
+        if (match(line, /^(true|false)/, arr)) {
+            focused = (arr[1] == "true") ? "*" : ""
+            line = substr(line, RSTART + RLENGTH)
+        } else {
+            focused = ""
+        }
+        
+        # Skip comma
+        sub(/^, */, "", line)
+        
+        # Field 7: workspace (int32 NUMBER or just NUMBER)
+        if (match(line, /int32 (-?[0-9]+)/, arr)) {
+            workspace = arr[1]
+            line = substr(line, RSTART + RLENGTH)
+        } else if (match(line, /^(-?[0-9]+)/, arr)) {
+            workspace = arr[1]
+            line = substr(line, RSTART + RLENGTH)
+        } else {
+            workspace = "-"
+        }
+        
+        # Skip comma
+        sub(/^, */, "", line)
+        
+        # Field 8: monitor (int32 NUMBER or just NUMBER)
+        if (match(line, /int32 (-?[0-9]+)/, arr)) {
+            monitor = arr[1]
+        } else if (match(line, /^(-?[0-9]+)/, arr)) {
+            monitor = arr[1]
+        } else {
+            monitor = "-"
+        }
+        
+        # Truncate title if too long
+        if (length(title) > 37) {
+            title = substr(title, 1, 37) "..."
+        }
+        
+        # Format workspace display
+        if (workspace == "-1") {
+            workspace = "all"
+        }
+        
+        # Print formatted row
+        printf "%-12s %-40s %-20s %-10s %-8s %-7s\n", id, title, wm_class, workspace, monitor, focused
+    }
+    '
+}
+
+# List windows as JSON (detailed)
+cmd_list_json() {
+    local raw
+    raw=$(dbus_call "ListDetailed")
+    
+    # The output is: ('JSON_STRING',)
+    # Extract the JSON string from GVariant wrapper
+    local json="${raw#(\'}"
+    json="${json%\',)}"
+    
+    # Handle escaped quotes if any
+    json="${json//\\\'/\'}"
+    
+    echo "$json"
+}
+
+# Activate a window
+# Usage: cmd_activate [OPTIONS] [ID]
+cmd_activate() {
+    local mode="id"
+    local value=""
+    
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -t)
+                mode="title"
+                shift
+                [[ $# -eq 0 ]] && die "Option -t requires a title argument"
+                value="$1"
+                shift
+                ;;
+            -s)
+                mode="substring"
+                shift
+                [[ $# -eq 0 ]] && die "Option -s requires a substring argument"
+                value="$1"
+                shift
+                ;;
+            -c)
+                mode="class"
+                shift
+                [[ $# -eq 0 ]] && die "Option -c requires a WM class argument"
+                value="$1"
+                shift
+                ;;
+            -p)
+                mode="pid"
+                shift
+                [[ $# -eq 0 ]] && die "Option -p requires a PID argument"
+                value="$1"
+                shift
+                ;;
+            -*)
+                die "Unknown option: $1"
+                ;;
+            *)
+                # Positional argument (window ID)
+                mode="id"
+                value="$1"
+                shift
+                ;;
+        esac
+    done
+    
+    [[ -z "$value" ]] && die "Usage: wctl activate <ID> or wctl activate -t|-s|-c|-p <value>"
+    
+    local raw success
+    case "$mode" in
+        id)
+            # Validate numeric ID
+            [[ ! "$value" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+            raw=$(dbus_call "Activate" "uint64:$value")
+            ;;
+        title)
+            raw=$(dbus_call "ActivateByTitle" "$value")
+            ;;
+        substring)
+            raw=$(dbus_call "ActivateByTitleSubstring" "$value")
+            ;;
+        class)
+            raw=$(dbus_call "ActivateByWmClass" "$value")
+            ;;
+        pid)
+            # Validate numeric PID
+            [[ ! "$value" =~ ^[0-9]+$ ]] && die "PID must be a number"
+            raw=$(dbus_call "ActivateByPid" "int32:$value")
+            ;;
+    esac
+    
+    # Parse result - format is (true,) or (false,)
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window activated"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Focus a window by ID (without raising)
+cmd_focus() {
+    local id="${1:-}"
+    
+    [[ -z "$id" ]] && die "Usage: wctl focus <ID>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    local raw
+    raw=$(dbus_call "Focus" "uint64:$id")
+    
+    # Parse result - format is (true,) or (false,)
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window focused"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Show focused window
+cmd_focused() {
+    local raw
+    raw=$(dbus_call "GetFocused")
+    
+    # Output format: (uint64 ID, 'title', 'wm_class')
+    # Extract values using pattern matching
+    
+    # Get window ID
+    local id
+    if [[ "$raw" =~ uint64\ ([0-9]+) ]]; then
+        id="${BASH_REMATCH[1]}"
+    elif [[ "$raw" =~ ^\(([0-9]+), ]]; then
+        id="${BASH_REMATCH[1]}"
+    else
+        id="0"
+    fi
+    
+    # Check if no window is focused
+    if [[ "$id" == "0" ]]; then
+        echo "No window focused"
+        return
+    fi
+    
+    # Extract title (first quoted string after ID)
+    local title=""
+    if [[ "$raw" =~ ,\ \'([^\']*)\',\ \' ]]; then
+        title="${BASH_REMATCH[1]}"
+    fi
+    
+    # Extract wm_class (second quoted string)
+    local wm_class=""
+    # Get everything after the title
+    local rest="${raw#*\', \'}"
+    if [[ "$rest" =~ ^([^\']*)\' ]]; then
+        wm_class="${BASH_REMATCH[1]}"
+    fi
+    
+    echo "ID: ${id}, Title: ${title}, Class: ${wm_class}"
+}
+
+# ============================================================================
+# Geometry Commands
+# ============================================================================
+
+# Get window geometry
+cmd_geometry() {
+    local id="${1:-}"
+    
+    [[ -z "$id" ]] && die "Usage: wctl geometry <ID>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    local raw
+    raw=$(dbus_call "GetGeometry" "uint64:$id")
+    
+    # Output format: (int32 x, int32 y, int32 width, int32 height)
+    # Parse values
+    local x y width height
+    
+    if [[ "$raw" =~ int32\ (-?[0-9]+),\ int32\ (-?[0-9]+),\ int32\ (-?[0-9]+),\ int32\ (-?[0-9]+) ]]; then
+        x="${BASH_REMATCH[1]}"
+        y="${BASH_REMATCH[2]}"
+        width="${BASH_REMATCH[3]}"
+        height="${BASH_REMATCH[4]}"
+    elif [[ "$raw" =~ \((-?[0-9]+),\ (-?[0-9]+),\ (-?[0-9]+),\ (-?[0-9]+)\) ]]; then
+        x="${BASH_REMATCH[1]}"
+        y="${BASH_REMATCH[2]}"
+        width="${BASH_REMATCH[3]}"
+        height="${BASH_REMATCH[4]}"
+    else
+        die "Failed to parse geometry response"
+    fi
+    
+    # Check for not found (-1, -1, -1, -1)
+    if [[ "$x" == "-1" && "$y" == "-1" && "$width" == "-1" && "$height" == "-1" ]]; then
+        echo "Window not found"
+        exit 1
+    fi
+    
+    # Output space-separated for easy parsing
+    echo "$x $y $width $height"
+}
+
+# Move window
+cmd_move() {
+    local id="${1:-}"
+    local x="${2:-}"
+    local y="${3:-}"
+    
+    [[ -z "$id" || -z "$x" || -z "$y" ]] && die "Usage: wctl move <ID> <X> <Y>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    [[ ! "$x" =~ ^-?[0-9]+$ ]] && die "X coordinate must be a number"
+    [[ ! "$y" =~ ^-?[0-9]+$ ]] && die "Y coordinate must be a number"
+    
+    local raw
+    raw=$(dbus_call "Move" "uint64:$id" "int32:$x" "int32:$y")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window moved"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Resize window
+cmd_resize() {
+    local id="${1:-}"
+    local width="${2:-}"
+    local height="${3:-}"
+    
+    [[ -z "$id" || -z "$width" || -z "$height" ]] && die "Usage: wctl resize <ID> <WIDTH> <HEIGHT>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    [[ ! "$width" =~ ^[0-9]+$ ]] && die "Width must be a positive number"
+    [[ ! "$height" =~ ^[0-9]+$ ]] && die "Height must be a positive number"
+    
+    local raw
+    raw=$(dbus_call "Resize" "uint64:$id" "int32:$width" "int32:$height")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window resized"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Move and resize window
+cmd_move_resize() {
+    local id="${1:-}"
+    local x="${2:-}"
+    local y="${3:-}"
+    local width="${4:-}"
+    local height="${5:-}"
+    
+    [[ -z "$id" || -z "$x" || -z "$y" || -z "$width" || -z "$height" ]] && \
+        die "Usage: wctl move-resize <ID> <X> <Y> <WIDTH> <HEIGHT>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    [[ ! "$x" =~ ^-?[0-9]+$ ]] && die "X coordinate must be a number"
+    [[ ! "$y" =~ ^-?[0-9]+$ ]] && die "Y coordinate must be a number"
+    [[ ! "$width" =~ ^[0-9]+$ ]] && die "Width must be a positive number"
+    [[ ! "$height" =~ ^[0-9]+$ ]] && die "Height must be a positive number"
+    
+    local raw
+    raw=$(dbus_call "MoveResize" "uint64:$id" "int32:$x" "int32:$y" "int32:$width" "int32:$height")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window moved and resized"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Move window to monitor
+cmd_to_monitor() {
+    local id="${1:-}"
+    local monitor="${2:-}"
+    
+    [[ -z "$id" || -z "$monitor" ]] && die "Usage: wctl to-monitor <ID> <MONITOR>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    [[ ! "$monitor" =~ ^[0-9]+$ ]] && die "Monitor index must be a non-negative number"
+    
+    local raw
+    raw=$(dbus_call "MoveToMonitor" "uint64:$id" "int32:$monitor")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window moved to monitor $monitor"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Move window to workspace
+cmd_to_workspace() {
+    local id="${1:-}"
+    local workspace="${2:-}"
+    
+    [[ -z "$id" || -z "$workspace" ]] && die "Usage: wctl to-workspace <ID> <WORKSPACE>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    [[ ! "$workspace" =~ ^[0-9]+$ ]] && die "Workspace index must be a non-negative number"
+    
+    local raw
+    raw=$(dbus_call "MoveToWorkspace" "uint64:$id" "int32:$workspace")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window moved to workspace $workspace"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# ============================================================================
+# State Commands
+# ============================================================================
+
+# Helper for simple window state commands
+# Usage: cmd_simple_state METHOD MESSAGE_SUCCESS
+cmd_simple_state() {
+    local method="$1"
+    local success_msg="$2"
+    local id="${3:-}"
+    
+    [[ -z "$id" ]] && die "Usage: wctl ${method,,} <ID>"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    local raw
+    raw=$(dbus_call "$method" "uint64:$id")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "$success_msg"
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+cmd_minimize() {
+    cmd_simple_state "Minimize" "Window minimized" "$@"
+}
+
+cmd_unminimize() {
+    cmd_simple_state "Unminimize" "Window unminimized" "$@"
+}
+
+cmd_maximize() {
+    cmd_simple_state "Maximize" "Window maximized" "$@"
+}
+
+cmd_unmaximize() {
+    cmd_simple_state "Unmaximize" "Window unmaximized" "$@"
+}
+
+cmd_fullscreen() {
+    cmd_simple_state "Fullscreen" "Window fullscreened" "$@"
+}
+
+cmd_unfullscreen() {
+    cmd_simple_state "Unfullscreen" "Window unfullscreened" "$@"
+}
+
+cmd_close() {
+    cmd_simple_state "Close" "Window closed" "$@"
+}
+
+# Set above (always-on-top) state
+cmd_above() {
+    local id="${1:-}"
+    local state="${2:-}"
+    
+    [[ -z "$id" || -z "$state" ]] && die "Usage: wctl above <ID> on|off"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    local above
+    case "$state" in
+        on|true|1)
+            above="true"
+            ;;
+        off|false|0)
+            above="false"
+            ;;
+        *)
+            die "State must be 'on' or 'off'"
+            ;;
+    esac
+    
+    local raw
+    raw=$(dbus_call "SetAbove" "uint64:$id" "$above")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        if [[ "$above" == "true" ]]; then
+            echo "Window set to always-on-top"
+        else
+            echo "Window removed from always-on-top"
+        fi
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Set sticky (all workspaces) state
+cmd_sticky() {
+    local id="${1:-}"
+    local state="${2:-}"
+    
+    [[ -z "$id" || -z "$state" ]] && die "Usage: wctl sticky <ID> on|off"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+    
+    local sticky
+    case "$state" in
+        on|true|1)
+            sticky="true"
+            ;;
+        off|false|0)
+            sticky="false"
+            ;;
+        *)
+            die "State must be 'on' or 'off'"
+            ;;
+    esac
+    
+    local raw
+    raw=$(dbus_call "SetSticky" "uint64:$id" "$sticky")
+    
+    if [[ "$raw" == "(true,)" ]]; then
+        if [[ "$sticky" == "true" ]]; then
+            echo "Window set to all workspaces"
+        else
+            echo "Window removed from all workspaces"
+        fi
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Main entry point
+main() {
+    # Handle no arguments
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
+    local cmd="$1"
+    shift
+    
+    case "$cmd" in
+        # Listing commands
+        list)
+            if [[ "${1:-}" == "--json" ]]; then
+                cmd_list_json
+            else
+                cmd_list
+            fi
+            ;;
+        focused)
+            cmd_focused
+            ;;
+        
+        # Activation commands
+        activate)
+            cmd_activate "$@"
+            ;;
+        focus)
+            cmd_focus "$@"
+            ;;
+        
+        # Geometry commands
+        geometry)
+            cmd_geometry "$@"
+            ;;
+        move)
+            cmd_move "$@"
+            ;;
+        resize)
+            cmd_resize "$@"
+            ;;
+        move-resize)
+            cmd_move_resize "$@"
+            ;;
+        to-monitor)
+            cmd_to_monitor "$@"
+            ;;
+        to-workspace)
+            cmd_to_workspace "$@"
+            ;;
+        
+        # State commands
+        minimize)
+            cmd_minimize "$@"
+            ;;
+        unminimize)
+            cmd_unminimize "$@"
+            ;;
+        maximize)
+            cmd_maximize "$@"
+            ;;
+        unmaximize)
+            cmd_unmaximize "$@"
+            ;;
+        fullscreen)
+            cmd_fullscreen "$@"
+            ;;
+        unfullscreen)
+            cmd_unfullscreen "$@"
+            ;;
+        above)
+            cmd_above "$@"
+            ;;
+        sticky)
+            cmd_sticky "$@"
+            ;;
+        close)
+            cmd_close "$@"
+            ;;
+        
+        # Help
+        help|--help|-h)
+            show_help
+            ;;
+        *)
+            die "Unknown command: $cmd. Run 'wctl help' for usage."
+            ;;
+    esac
+}
+
+main "$@"
