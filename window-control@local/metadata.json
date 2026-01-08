@@ -1,0 +1,7 @@
+{
+  "uuid": "window-control@local",
+  "name": "Window Control",
+  "description": "D-Bus interface for listing and controlling windows",
+  "shell-version": ["45", "46", "47"],
+  "version": 1
+}
