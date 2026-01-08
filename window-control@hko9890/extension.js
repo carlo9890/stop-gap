@@ -162,28 +162,6 @@ const DBUS_INTERFACE_XML = `
       <arg type="i" direction="out" name="height"/>
     </method>
 
-    <!--
-      MoveToMonitor: Move window to specified monitor
-      Args: t - window ID, i - monitor index
-      Returns: b - success
-    -->
-    <method name="MoveToMonitor">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="i" direction="in" name="monitor"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
-    <!--
-      MoveToWorkspace: Move window to specified workspace
-      Args: t - window ID, i - workspace index
-      Returns: b - success
-    -->
-    <method name="MoveToWorkspace">
-      <arg type="t" direction="in" name="window_id"/>
-      <arg type="i" direction="in" name="workspace"/>
-      <arg type="b" direction="out" name="success"/>
-    </method>
-
     <!-- State Methods -->
 
     <!--
@@ -566,6 +544,13 @@ class WindowControlService {
     Move(windowId, x, y) {
         console.error(`[Window Control] Move(${windowId}, ${x}, ${y}) called`);
         try {
+            // Validate coordinates are reasonable numbers
+            if (typeof x !== 'number' || typeof y !== 'number' ||
+                !Number.isFinite(x) || !Number.isFinite(y)) {
+                console.error(`[Window Control] Move: Invalid coordinates`);
+                return false;
+            }
+            
             const win = this._findWindowById(windowId);
             if (win) {
                 win.move_frame(true, x, y);
@@ -584,6 +569,14 @@ class WindowControlService {
     Resize(windowId, width, height) {
         console.error(`[Window Control] Resize(${windowId}, ${width}, ${height}) called`);
         try {
+            // Validate dimensions are positive finite numbers
+            if (typeof width !== 'number' || typeof height !== 'number' ||
+                !Number.isFinite(width) || !Number.isFinite(height) ||
+                width <= 0 || height <= 0) {
+                console.error(`[Window Control] Resize: Invalid dimensions (must be positive)`);
+                return false;
+            }
+            
             const win = this._findWindowById(windowId);
             if (win) {
                 const rect = win.get_frame_rect();
@@ -603,6 +596,16 @@ class WindowControlService {
     MoveResize(windowId, x, y, width, height) {
         console.error(`[Window Control] MoveResize(${windowId}, ${x}, ${y}, ${width}, ${height}) called`);
         try {
+            // Validate all parameters
+            if (typeof x !== 'number' || typeof y !== 'number' ||
+                typeof width !== 'number' || typeof height !== 'number' ||
+                !Number.isFinite(x) || !Number.isFinite(y) ||
+                !Number.isFinite(width) || !Number.isFinite(height) ||
+                width <= 0 || height <= 0) {
+                console.error(`[Window Control] MoveResize: Invalid parameters`);
+                return false;
+            }
+            
             const win = this._findWindowById(windowId);
             if (win) {
                 win.move_resize_frame(true, x, y, width, height);
@@ -632,42 +635,6 @@ class WindowControlService {
         } catch (e) {
             console.error(`[Window Control] GetGeometry() error: ${e.message}`);
             return [-1, -1, -1, -1];
-        }
-    }
-
-    // MoveToMonitor: Move window to specified monitor
-    MoveToMonitor(windowId, monitor) {
-        console.error(`[Window Control] MoveToMonitor(${windowId}, ${monitor}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.move_to_monitor(monitor);
-                console.error(`[Window Control] MoveToMonitor(${windowId}, ${monitor}) -> true`);
-                return true;
-            }
-            console.error(`[Window Control] MoveToMonitor(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] MoveToMonitor() error: ${e.message}`);
-            return false;
-        }
-    }
-
-    // MoveToWorkspace: Move window to specified workspace
-    MoveToWorkspace(windowId, workspace) {
-        console.error(`[Window Control] MoveToWorkspace(${windowId}, ${workspace}) called`);
-        try {
-            const win = this._findWindowById(windowId);
-            if (win) {
-                win.change_workspace_by_index(workspace, false);
-                console.error(`[Window Control] MoveToWorkspace(${windowId}, ${workspace}) -> true`);
-                return true;
-            }
-            console.error(`[Window Control] MoveToWorkspace(${windowId}) -> false (window not found)`);
-            return false;
-        } catch (e) {
-            console.error(`[Window Control] MoveToWorkspace() error: ${e.message}`);
-            return false;
         }
     }
 

@@ -280,73 +280,6 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
         echo ""
 
         echo "============================================"
-        echo "=== MOVE TO MONITOR ==="
-        echo "============================================"
-        echo ""
-
-        # Get number of monitors (from first window's detail, or assume 1)
-        NUM_MONITORS=$(gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>/dev/null | \
-            sed "s/^('//;s/',)$//" | jq '[.[].monitor] | max + 1' 2>/dev/null || echo "1")
-        echo "Detected monitors: $NUM_MONITORS"
-        echo ""
-
-        if [[ "$NUM_MONITORS" -gt 1 ]]; then
-            # Move to monitor 1 (second monitor) if it exists
-            TARGET_MONITOR=$((WINDOW_MONITOR == 0 ? 1 : 0))
-            echo "=== MoveToMonitor $WINDOW_ID $TARGET_MONITOR ==="
-            gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToMonitor" "$WINDOW_ID" "$TARGET_MONITOR" 2>&1
-            sleep 0.5
-            echo ""
-
-            echo "=== Verify monitor change ==="
-            gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
-                sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {monitor}" 2>/dev/null || echo "(jq not available)"
-            echo ""
-
-            # Move back to original monitor
-            echo "=== MoveToMonitor $WINDOW_ID $WINDOW_MONITOR (restore) ==="
-            gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToMonitor" "$WINDOW_ID" "$WINDOW_MONITOR" 2>&1
-            sleep 0.5
-            echo ""
-        else
-            echo "=== MoveToMonitor - Only 1 monitor detected, testing invalid monitor ==="
-            echo ""
-        fi
-
-        echo "=== MoveToMonitor $WINDOW_ID 99 (invalid monitor - error expected) ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToMonitor" "$WINDOW_ID" 99 2>&1
-        echo ""
-
-        echo "============================================"
-        echo "=== MOVE TO WORKSPACE ==="
-        echo "============================================"
-        echo ""
-
-        # Determine a different workspace to test with
-        TARGET_WORKSPACE=$((WINDOW_WORKSPACE + 1))
-        echo "Current workspace: $WINDOW_WORKSPACE, Target: $TARGET_WORKSPACE"
-        echo ""
-
-        echo "=== MoveToWorkspace $WINDOW_ID $TARGET_WORKSPACE ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToWorkspace" "$WINDOW_ID" "$TARGET_WORKSPACE" 2>&1
-        sleep 0.5
-        echo ""
-
-        echo "=== Verify workspace change ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.ListDetailed" 2>&1 | \
-            sed "s/^('//;s/',)$//" | jq ".[] | select(.id == $WINDOW_ID) | {workspace}" 2>/dev/null || echo "(jq not available)"
-        echo ""
-
-        echo "=== MoveToWorkspace $WINDOW_ID $WINDOW_WORKSPACE (restore) ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToWorkspace" "$WINDOW_ID" "$WINDOW_WORKSPACE" 2>&1
-        sleep 0.5
-        echo ""
-
-        echo "=== MoveToWorkspace $WINDOW_ID -5 (invalid workspace - error expected) ==="
-        gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToWorkspace" "$WINDOW_ID" "-5" 2>&1
-        echo ""
-
-        echo "============================================"
         echo "=== FINAL STATE ==="
         echo "============================================"
         echo ""
@@ -419,14 +352,6 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
     gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveResize" 999999999 0 0 100 100 2>&1
     echo ""
 
-    echo "=== MoveToMonitor (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToMonitor" 999999999 0 2>&1
-    echo ""
-
-    echo "=== MoveToWorkspace (invalid ID 999999999) ==="
-    gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.MoveToWorkspace" 999999999 0 2>&1
-    echo ""
-
     echo "=== Close (invalid ID 999999999) ==="
     gdbus call --session --dest "$DEST" --object-path "$PATH_" --method "$IFACE.Close" 999999999 2>&1
     echo ""
@@ -444,7 +369,6 @@ IFACE="org.gnome.Shell.Extensions.WindowControl"
     echo "  - Fullscreen, Unfullscreen"
     echo "  - SetAbove, SetSticky"
     echo "  - Move, Resize, MoveResize"
-    echo "  - MoveToMonitor, MoveToWorkspace"
     echo "  - GetGeometry"
     echo "  - Close (error case only - destructive)"
     echo ""
