@@ -40,6 +40,27 @@ After modifying `window-control@hko9890/extension.js`:
 ./scripts/update.sh logs       # Check for errors
 ```
 
+### Testing Code Changes (Nested Session)
+
+Since disable/enable doesn't reload JS code, use a **nested GNOME Shell session**:
+
+```bash
+# 1. Make your code changes
+# 2. Install the updated files
+./scripts/update.sh install
+
+# 3. Start a nested GNOME Shell (runs in a window)
+./scripts/update.sh nested
+
+# 4. Inside the nested session, open a terminal and enable:
+gnome-extensions enable window-control@hko9890
+
+# 5. Test your changes in the nested session
+# 6. Close the window and repeat
+```
+
+The nested session runs GNOME Shell in a window, isolated from your main session. All logs appear in the terminal that started it.
+
 ### Building for Distribution
 
 ```bash
@@ -105,6 +126,8 @@ gdbus call --session --dest org.gnome.Shell \
 | Adding new files | Yes |
 
 **Important**: Unlike some plugin systems, `gnome-extensions disable/enable` does NOT reload JavaScript code from disk. It only calls `disable()` and `enable()` on the already-loaded code. To test actual code changes, you must restart GNOME Shell (log out/in on Wayland).
+
+**Tip**: Use a **nested GNOME Shell session** instead of logging out/in. Run `./scripts/update.sh nested` to start GNOME Shell in a window for testing.
 
 ### Logging
 

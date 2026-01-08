@@ -124,6 +124,27 @@ update() {
     log_info "Update complete!"
 }
 
+# Start a nested GNOME Shell session for testing
+start_nested() {
+    log_info "Starting nested GNOME Shell session..."
+    log_info "This opens GNOME Shell in a window for testing."
+    log_info "Close the window to stop the session."
+    log_warn "Note: Run 'gnome-extensions enable $EXTENSION_UUID' inside the nested session"
+    echo ""
+    
+    # Check GNOME version to determine flag
+    local gnome_version
+    gnome_version=$(gnome-shell --version | awk '{print int($3)}')
+    
+    if [[ "$gnome_version" -ge 49 ]]; then
+        # GNOME 49+ uses --devkit
+        dbus-run-session gnome-shell --devkit --wayland
+    else
+        # GNOME 48 and earlier uses --nested
+        dbus-run-session gnome-shell --nested --wayland
+    fi
+}
+
 # Show help
 usage() {
     cat << EOF
@@ -139,11 +160,22 @@ Commands:
     status      Show extension status
     logs        Show recent extension logs
     test        Test D-Bus interface
+    nested      Start a nested GNOME Shell session for testing
     help        Show this help message
+
+Development Workflow:
+    1. Make changes to extension.js
+    2. Run: $0 install
+    3. Run: $0 nested
+    4. Inside nested session: gnome-extensions enable $EXTENSION_UUID
+    5. Test your changes
+    6. Close nested window and repeat
+
+Note: disable/enable does NOT reload JS code. Use nested session or logout/login.
 
 Examples:
     $0              # Full update (validate + install + reload + test)
-    $0 reload       # Just reload without copying files
+    $0 nested       # Start nested GNOME Shell for testing code changes
     $0 logs         # Check for errors in logs
 EOF
 }
@@ -173,6 +205,9 @@ main() {
             ;;
         test)
             test_dbus
+            ;;
+        nested)
+            start_nested
             ;;
         help|--help|-h)
             usage
