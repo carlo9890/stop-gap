@@ -123,8 +123,6 @@ GEOMETRY COMMANDS:
     move <ID> <X> <Y>                   Move window to position
     resize <ID> <WIDTH> <HEIGHT>        Resize window
     move-resize <ID> <X> <Y> <W> <H>    Move and resize atomically
-    to-monitor <ID> <MONITOR>           Move window to monitor index
-
 STATE COMMANDS:
     minimize <ID>           Minimize window
     unminimize <ID>         Restore from minimize
@@ -656,28 +654,6 @@ cmd_move_resize() {
     fi
 }
 
-# Move window to monitor
-cmd_to_monitor() {
-    local id="${1:-}"
-    local monitor="${2:-}"
-    
-    [[ -z "$id" || -z "$monitor" ]] && die "Usage: wctl to-monitor <ID> <MONITOR>"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
-    [[ ! "$monitor" =~ ^[0-9]+$ ]] && die "Monitor index must be a non-negative number"
-    
-    local raw
-    raw=$(dbus_call "MoveToMonitor" "$id" "$monitor")
-    
-    if [[ "$raw" == "(true,)" ]]; then
-        echo "Window moved to monitor $monitor"
-    else
-        echo "Window not found"
-        exit 1
-    fi
-}
-
-
-
 # ============================================================================
 # State Commands
 # ============================================================================
@@ -861,10 +837,6 @@ main() {
         move-resize)
             cmd_move_resize "$@"
             ;;
-        to-monitor)
-            cmd_to_monitor "$@"
-            ;;
-        
         # State commands
         minimize)
             cmd_minimize "$@"
