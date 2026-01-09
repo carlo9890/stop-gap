@@ -20,6 +20,26 @@ A GNOME Shell extension that provides a D-Bus interface for listing and controll
 
 ### Extension
 
+#### From GitHub Releases (Recommended)
+
+1. Download the latest release from the [GitHub Releases page](https://github.com/carlo9890/gnome-window-control/releases)
+
+2. Install the downloaded zip file:
+   ```bash
+   gnome-extensions install window-control@hko9890_v*.zip --force
+   ```
+
+3. Restart GNOME Shell:
+   - On X11: Press `Alt+F2`, type `r`, and press Enter
+   - On Wayland: Log out and log back in
+
+4. Enable the extension:
+   ```bash
+   gnome-extensions enable window-control@hko9890
+   ```
+
+#### From Source (For Development)
+
 1. Clone this repository:
    ```bash
    git clone https://github.com/carlo9890/gnome-window-control.git
