@@ -34,8 +34,21 @@ die() {
     exit 1
 }
 
+# Check if required tools are available
+check_dependencies() {
+    if ! command -v busctl &>/dev/null; then
+        die "busctl not found. Install systemd or systemd-libs package."
+    fi
+    if ! command -v jq &>/dev/null; then
+        die "jq not found. Install jq package."
+    fi
+}
+
 # Check if the Window Control extension is installed and enabled
 check_extension() {
+    # Check dependencies first
+    check_dependencies
+    
     # Check if extension is installed
     if ! gnome-extensions list 2>/dev/null | grep -q "window-control@hko9890"; then
         die "Window Control extension is not installed.
@@ -58,7 +71,7 @@ Enable it with:
     fi
 }
 
-# Call D-Bus method and return raw output
+# Call D-Bus method and return raw output (GVariant format)
 # Usage: dbus_call METHOD [ARGS...]
 dbus_call() {
     local method="$1"
@@ -79,6 +92,31 @@ dbus_call() {
     fi
     
     echo "$result"
+}
+
+# Call D-Bus method and return JSON output (using busctl)
+# Usage: dbus_call_json METHOD
+# Returns: JSON string from D-Bus string return value
+dbus_call_json() {
+    local method="$1"
+    
+    local result
+    if ! result=$(busctl --user call --json=short \
+        "$DBUS_DEST" \
+        "$DBUS_PATH" \
+        "$DBUS_IFACE" \
+        "$method" 2>&1); then
+        
+        # Check for common errors
+        if [[ "$result" == *"No route to host"* ]] || [[ "$result" == *"not found"* ]]; then
+            die "Window Control extension is not running. Enable it in GNOME Extensions."
+        fi
+        die "D-Bus call failed: $result"
+    fi
+    
+    # busctl --json returns: {"type":"s","data":["JSON_STRING"]}
+    # Extract the actual JSON string from data[0]
+    echo "$result" | jq -r '.data[0]'
 }
 
 # Truncate string to max length with ellipsis
@@ -310,18 +348,7 @@ cmd_list() {
 
 # List windows as JSON (detailed)
 cmd_list_json() {
-    local raw
-    raw=$(dbus_call "ListDetailed")
-    
-    # The output is: ("JSON_STRING",)
-    # Extract the JSON string from GVariant wrapper
-    local json="${raw#(\"}"
-    json="${json%\",)}"
-    
-    # Unescape the JSON (GVariant escapes internal quotes)
-    json="${json//\\\"/\"}"
-    
-    echo "$json"
+    dbus_call_json "ListDetailed"
 }
 
 # Activate a window
@@ -510,13 +537,8 @@ cmd_info() {
     [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
     
     # Get detailed window list as JSON
-    local raw
-    raw=$(dbus_call "ListDetailed")
-    
-    # Extract the JSON string from GVariant wrapper
-    local json="${raw#(\"}"
-    json="${json%\",)}"
-    json="${json//\\\"/\"}"
+    local json
+    json=$(dbus_call_json "ListDetailed")
     
     # Find the window with matching ID using jq
     local window
