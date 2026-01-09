@@ -4,10 +4,6 @@
 #
 # Requires the Window Control extension to be running.
 #
-# NOTE: There is a known bug (stop-gap-thy) where wctl list fails with
-# awk syntax errors on systems using mawk instead of gawk. This test
-# will skip those assertions if the command fails due to awk issues.
-#
 
 # Source test helper
 source "$(dirname "$0")/test-helper.sh"
@@ -21,26 +17,15 @@ require_extension
 # Test: wctl list command
 run_wctl list
 
-# Check if we hit the known awk bug
-if [[ "$WCTL_OUTPUT" == *"awk:"*"syntax error"* ]]; then
-    skip "wctl list has awk compatibility issue (see stop-gap-thy)"
-    echo "  Use 'wctl list --json' as a workaround"
-    summary
-    exit 0
-fi
-
 assert_exit_code 0 "$WCTL_EXIT_CODE" "wctl list exits with code 0"
 
 # Test: Output contains header row
 assert_contains "$WCTL_OUTPUT" "ID" "Header contains ID column"
 assert_contains "$WCTL_OUTPUT" "TITLE" "Header contains TITLE column"
-assert_contains "$WCTL_OUTPUT" "WM_CLASS" "Header contains WM_CLASS column"
-assert_contains "$WCTL_OUTPUT" "WORKSPACE" "Header contains WORKSPACE column"
-assert_contains "$WCTL_OUTPUT" "MONITOR" "Header contains MONITOR column"
-assert_contains "$WCTL_OUTPUT" "FOCUSED" "Header contains FOCUSED column"
-
-# Test: Output contains separator line (dashes)
-assert_contains "$WCTL_OUTPUT" "---" "Output contains separator line"
+assert_contains "$WCTL_OUTPUT" "CLASS" "Header contains CLASS column"
+assert_contains "$WCTL_OUTPUT" "WS" "Header contains WS (workspace) column"
+assert_contains "$WCTL_OUTPUT" "MON" "Header contains MON (monitor) column"
+assert_contains "$WCTL_OUTPUT" "F" "Header contains F (focused) column"
 
 # Test: At least one window should exist (the terminal running this test)
 # Count lines (excluding header and separator)

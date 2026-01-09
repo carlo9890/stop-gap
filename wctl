@@ -199,151 +199,33 @@ EOF
 
 # List windows in table format
 cmd_list() {
-    local raw
-    raw=$(dbus_call "List")
-    
-    # gdbus output format: ([...],)
-    # Each window: (uint64 ID, 'title', 'wm_class', 'wm_class_instance', 'sandboxed_app_id', bool, int32, int32, int32, int32)
-    
-    # Print header
-    printf "${BOLD}%-12s %-40s %-20s %-10s %-8s %-7s${RESET}\n" \
-        "ID" "TITLE" "WM_CLASS" "WORKSPACE" "MONITOR" "FOCUSED"
-    printf "%s\n" "$(printf '%.0s-' {1..100})"
-    
-    # Parse the GVariant output
-    # Remove outer ([...],) wrapper and process each tuple
-    # The format is: (uint64 123, 'title', 'class', 'instance', 'sandbox', true/false, int32 0, int32 0, int32 1234, int32 0)
-    
-    # Extract the array content (between outer parentheses)
-    local content="${raw#(}"
-    content="${content%,)}"
+    # Use JSON output with jq for proper unicode handling
+    local json
+    json=$(dbus_call_json "ListDetailed")
     
     # Check for empty list
-    if [[ "$content" == "[]" ]] || [[ -z "$content" ]]; then
+    local count
+    count=$(echo "$json" | jq 'length')
+    if [[ "$count" -eq 0 ]]; then
         echo "No windows found."
         return
     fi
     
-    # Remove outer brackets
-    content="${content#\[}"
-    content="${content%\]}"
-    
-    # Process each window tuple using POSIX-compatible awk
-    # Uses gsub/sub instead of gawk-specific match() with capture groups
-    echo "$content" | awk '
-    BEGIN {
-        RS = "\\), \\("   # Split on tuple boundaries
-        FS = ""
-    }
-    
-    # Helper: extract number after optional "uint64 " or "int32 " prefix
-    function extract_number(s, result) {
-        # Remove type prefix if present
-        gsub(/^uint64 /, "", s)
-        gsub(/^int32 /, "", s)
-        # Match leading number (possibly negative)
-        if (match(s, /^-?[0-9]+/)) {
-            return substr(s, RSTART, RLENGTH)
-        }
-        return ""
-    }
-    
-    # Helper: extract quoted string (returns content without quotes)
-    function extract_quoted(s, result) {
-        if (match(s, /^'\''[^'\'']*'\''/)) {
-            result = substr(s, RSTART + 1, RLENGTH - 2)
-            return result
-        }
-        return ""
-    }
-    
-    # Helper: find position after quoted string
-    function skip_quoted(s) {
-        if (match(s, /^'\''[^'\'']*'\''/)) {
-            return RLENGTH
-        }
-        return 0
-    }
-    
+    # Format as table using jq and column for proper unicode alignment
     {
-        # Clean up the record
-        gsub(/^\(/, "", $0)
-        gsub(/\)$/, "", $0)
+        # Header
+        echo -e "${BOLD}ID\tTITLE\tCLASS\tWS\tMON\tF${RESET}"
         
-        line = $0
-        
-        # Field 1: ID (uint64 NUMBER or just NUMBER)
-        id = extract_number(line)
-        # Skip past the ID field
-        sub(/^(uint64 )?[0-9]+/, "", line)
-        sub(/^, */, "", line)
-        
-        # Field 2: title (quoted string)
-        title = extract_quoted(line)
-        skip_len = skip_quoted(line)
-        if (skip_len > 0) {
-            line = substr(line, skip_len + 1)
-        }
-        sub(/^, */, "", line)
-        
-        # Field 3: wm_class (quoted string)
-        wm_class = extract_quoted(line)
-        skip_len = skip_quoted(line)
-        if (skip_len > 0) {
-            line = substr(line, skip_len + 1)
-        }
-        sub(/^, */, "", line)
-        
-        # Field 4: wm_class_instance (quoted string) - skip
-        skip_len = skip_quoted(line)
-        if (skip_len > 0) {
-            line = substr(line, skip_len + 1)
-        }
-        sub(/^, */, "", line)
-        
-        # Field 5: sandboxed_app_id (quoted string) - skip
-        skip_len = skip_quoted(line)
-        if (skip_len > 0) {
-            line = substr(line, skip_len + 1)
-        }
-        sub(/^, */, "", line)
-        
-        # Field 6: is_focused (true/false)
-        focused = ""
-        if (match(line, /^true/)) {
-            focused = "*"
-            line = substr(line, 5)
-        } else if (match(line, /^false/)) {
-            focused = ""
-            line = substr(line, 6)
-        }
-        sub(/^, */, "", line)
-        
-        # Field 7: workspace (int32 NUMBER or just NUMBER)
-        workspace = extract_number(line)
-        if (workspace == "") workspace = "-"
-        # Skip past workspace field
-        sub(/^(int32 )?-?[0-9]+/, "", line)
-        sub(/^, */, "", line)
-        
-        # Field 8: monitor (int32 NUMBER or just NUMBER)
-        monitor = extract_number(line)
-        if (monitor == "") monitor = "-"
-        
-        # Truncate title if too long
-        if (length(title) > 37) {
-            title = substr(title, 1, 37) "..."
-        }
-        
-        # Format workspace display
-        if (workspace == "-1") {
-            workspace = "all"
-        }
-        
-        # Print formatted row
-        printf "%-12s %-40s %-20s %-10s %-8s %-7s\n", id, title, wm_class, workspace, monitor, focused
-    }
-    '
+        # Data rows - truncate title to 35 chars, format workspace
+        echo "$json" | jq -r '.[] | [
+            .id,
+            (if (.title | length) > 35 then (.title | .[0:32] + "...") else .title end),
+            .wm_class,
+            (if .workspace_index == -1 then "all" else .workspace_index end),
+            .monitor_index,
+            (if .has_focus then "*" else "" end)
+        ] | @tsv'
+    } | column -t -s $'\t'
 }
 
 # List windows as JSON (detailed)
