@@ -44,10 +44,11 @@ else
     assert_contains "$WCTL_OUTPUT" "States:" "Output contains 'States:' field"
     
     # Test: Focused field should show "yes" for focused window
-    assert_contains "$WCTL_OUTPUT" "Focused: yes" "Focused field shows 'yes'"
+    assert_contains "$WCTL_OUTPUT" "Focused:" "Output contains Focused field"
+    assert_contains "$WCTL_OUTPUT" "yes" "Focused field shows 'yes'"
     
     # Test: Extract window ID from output
-    if [[ "$WCTL_OUTPUT" =~ Window:\ ([0-9]+) ]]; then
+    if [[ "$WCTL_OUTPUT" =~ Window:\ +([0-9]+) ]]; then
         window_id="${BASH_REMATCH[1]}"
         if [[ "$window_id" -gt 0 ]]; then
             pass "Window ID is a positive integer: $window_id"

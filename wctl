@@ -356,42 +356,21 @@ cmd_focused() {
         esac
     done
     
-    # Get focused window from JSON list
-    local json
+    # Get focused window ID from JSON list
+    local json id
     json=$(dbus_call_json "ListDetailed")
+    id=$(echo "$json" | jq -r '.[] | select(.has_focus == true) | .id // empty')
     
-    # Find focused window
-    local window
-    window=$(echo "$json" | jq -e '.[] | select(.has_focus == true)' 2>/dev/null)
-    
-    if [[ -z "$window" || "$window" == "null" ]]; then
+    if [[ -z "$id" ]]; then
         echo "No window focused"
         return
     fi
     
+    # Delegate to cmd_info
     if [[ "$json_output" == true ]]; then
-        echo "$window"
+        cmd_info "$id" --json
     else
-        # Format output using jq
-        echo "$window" | jq -r '
-            "Window: \(.id)",
-            "Title: \(.title)",
-            "Class: \(.wm_class)",
-            "Instance: \(.wm_class_instance)",
-            "PID: \(.pid)",
-            "Workspace: \(if .workspace_index == -1 then "all" else .workspace_index end)",
-            "Monitor: \(.monitor_index)",
-            "Focused: \(if .has_focus then "yes" else "no" end)",
-            "Position: \(.frame_rect.x), \(.frame_rect.y)",
-            "Size: \(.frame_rect.width) x \(.frame_rect.height)",
-            "States: \([
-                (if .is_maximized then "maximized" else empty end),
-                (if .is_minimized then "minimized" else empty end),
-                (if .is_fullscreen then "fullscreen" else empty end),
-                (if .is_above then "above" else empty end),
-                (if .is_on_all_workspaces then "sticky" else empty end)
-            ] | if length == 0 then "none" else join(", ") end)"
-        '
+        cmd_info "$id"
     fi
 }
 
@@ -443,19 +422,19 @@ cmd_info() {
     if [[ "$json_output" == true ]]; then
         echo "$window"
     else
-        # Format output using single jq call
+        # Format output using jq with aligned labels
         echo "$window" | jq -r '
-            "Window: \(.id)",
-            "Title: \(.title)",
-            "Class: \(.wm_class)",
-            "Instance: \(.wm_class_instance)",
-            "PID: \(.pid)",
+            "Window:    \(.id)",
+            "Title:     \(.title)",
+            "Class:     \(.wm_class)",
+            "Instance:  \(.wm_class_instance)",
+            "PID:       \(.pid)",
             "Workspace: \(if .workspace_index == -1 then "all" else .workspace_index end)",
-            "Monitor: \(.monitor_index)",
-            "Focused: \(if .has_focus then "yes" else "no" end)",
-            "Position: \(.frame_rect.x), \(.frame_rect.y)",
-            "Size: \(.frame_rect.width) x \(.frame_rect.height)",
-            "States: \([
+            "Monitor:   \(.monitor_index)",
+            "Focused:   \(if .has_focus then "yes" else "no" end)",
+            "Position:  \(.frame_rect.x), \(.frame_rect.y)",
+            "Size:      \(.frame_rect.width) x \(.frame_rect.height)",
+            "States:    \([
                 (if .is_maximized then "maximized" else empty end),
                 (if .is_minimized then "minimized" else empty end),
                 (if .is_fullscreen then "fullscreen" else empty end),
