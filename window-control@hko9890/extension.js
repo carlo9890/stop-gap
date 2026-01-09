@@ -150,6 +150,17 @@ const DBUS_INTERFACE_XML = `
     </method>
 
     <!--
+      MoveToMonitor: Move window to specified monitor
+      Args: t - window ID, i - monitor index
+      Returns: b - success
+    -->
+    <method name="MoveToMonitor">
+      <arg type="t" direction="in" name="window_id"/>
+      <arg type="i" direction="in" name="monitor_index"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+
+    <!--
       GetGeometry: Get window geometry
       Args: t - window ID
       Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if not found)
@@ -616,6 +627,32 @@ class WindowControlService {
             return false;
         } catch (e) {
             console.error(`[Window Control] MoveResize() error: ${e.message}`);
+            return false;
+        }
+    }
+
+    // MoveToMonitor: Move window to specified monitor
+    MoveToMonitor(windowId, monitorIndex) {
+        console.log(`[Window Control] MoveToMonitor(${windowId}, ${monitorIndex}) called`);
+        try {
+            // Validate monitor index
+            const numMonitors = global.display.get_n_monitors();
+            if (typeof monitorIndex !== 'number' || !Number.isFinite(monitorIndex) ||
+                monitorIndex < 0 || monitorIndex >= numMonitors) {
+                console.log(`[Window Control] MoveToMonitor: Invalid monitor index (must be 0-${numMonitors - 1})`);
+                return false;
+            }
+            
+            const win = this._findWindowById(windowId);
+            if (win) {
+                win.move_to_monitor(monitorIndex);
+                console.log(`[Window Control] MoveToMonitor(${windowId}, ${monitorIndex}) -> true`);
+                return true;
+            }
+            console.log(`[Window Control] MoveToMonitor(${windowId}) -> false (window not found)`);
+            return false;
+        } catch (e) {
+            console.error(`[Window Control] MoveToMonitor() error: ${e.message}`);
             return false;
         }
     }
