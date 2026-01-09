@@ -356,31 +356,42 @@ cmd_focused() {
         esac
     done
     
-    local raw
-    raw=$(dbus_call "GetFocused")
+    # Get focused window from JSON list
+    local json
+    json=$(dbus_call_json "ListDetailed")
     
-    # Output format: (uint64 ID, 'title', 'wm_class')
-    # Extract window ID
-    local id
-    if [[ "$raw" =~ uint64\ ([0-9]+) ]]; then
-        id="${BASH_REMATCH[1]}"
-    elif [[ "$raw" =~ ^\(([0-9]+), ]]; then
-        id="${BASH_REMATCH[1]}"
-    else
-        id="0"
-    fi
+    # Find focused window
+    local window
+    window=$(echo "$json" | jq -e '.[] | select(.has_focus == true)' 2>/dev/null)
     
-    # Check if no window is focused
-    if [[ "$id" == "0" ]]; then
+    if [[ -z "$window" || "$window" == "null" ]]; then
         echo "No window focused"
         return
     fi
     
-    # Delegate to cmd_info with the focused window ID
     if [[ "$json_output" == true ]]; then
-        cmd_info "$id" --json
+        echo "$window"
     else
-        cmd_info "$id"
+        # Format output using jq
+        echo "$window" | jq -r '
+            "Window: \(.id)",
+            "Title: \(.title)",
+            "Class: \(.wm_class)",
+            "Instance: \(.wm_class_instance)",
+            "PID: \(.pid)",
+            "Workspace: \(if .workspace_index == -1 then "all" else .workspace_index end)",
+            "Monitor: \(.monitor_index)",
+            "Focused: \(if .has_focus then "yes" else "no" end)",
+            "Position: \(.frame_rect.x), \(.frame_rect.y)",
+            "Size: \(.frame_rect.width) x \(.frame_rect.height)",
+            "States: \([
+                (if .is_maximized then "maximized" else empty end),
+                (if .is_minimized then "minimized" else empty end),
+                (if .is_fullscreen then "fullscreen" else empty end),
+                (if .is_above then "above" else empty end),
+                (if .is_on_all_workspaces then "sticky" else empty end)
+            ] | if length == 0 then "none" else join(", ") end)"
+        '
     fi
 }
 
@@ -430,56 +441,28 @@ cmd_info() {
     }
     
     if [[ "$json_output" == true ]]; then
-        # Output raw JSON for this window
         echo "$window"
     else
-        # Output table format
-        local title wm_class wm_instance pid workspace monitor focused
-        local x y width height states
-        
-        title=$(echo "$window" | jq -r '.title')
-        wm_class=$(echo "$window" | jq -r '.wm_class')
-        wm_instance=$(echo "$window" | jq -r '.wm_class_instance')
-        pid=$(echo "$window" | jq -r '.pid')
-        workspace=$(echo "$window" | jq -r '.workspace_index')
-        monitor=$(echo "$window" | jq -r '.monitor_index')
-        focused=$(echo "$window" | jq -r 'if .has_focus then "yes" else "no" end')
-        x=$(echo "$window" | jq -r '.frame_rect.x')
-        y=$(echo "$window" | jq -r '.frame_rect.y')
-        width=$(echo "$window" | jq -r '.frame_rect.width')
-        height=$(echo "$window" | jq -r '.frame_rect.height')
-        
-        # Build states list from boolean flags
-        local state_list=()
-        [[ $(echo "$window" | jq -r '.is_maximized') == "true" ]] && state_list+=("maximized")
-        [[ $(echo "$window" | jq -r '.is_minimized') == "true" ]] && state_list+=("minimized")
-        [[ $(echo "$window" | jq -r '.is_fullscreen') == "true" ]] && state_list+=("fullscreen")
-        [[ $(echo "$window" | jq -r '.is_above') == "true" ]] && state_list+=("above")
-        [[ $(echo "$window" | jq -r '.is_on_all_workspaces') == "true" ]] && state_list+=("sticky")
-        
-        if [[ ${#state_list[@]} -gt 0 ]]; then
-            states=$(IFS=', '; echo "${state_list[*]}")
-        else
-            states="none"
-        fi
-        
-        # Format workspace display
-        if [[ "$workspace" == "-1" ]]; then
-            workspace="all"
-        fi
-        
-        # Print table output
-        echo "Window: $id"
-        echo "Title: $title"
-        echo "Class: $wm_class"
-        echo "Instance: $wm_instance"
-        echo "PID: $pid"
-        echo "Workspace: $workspace"
-        echo "Monitor: $monitor"
-        echo "Focused: $focused"
-        echo "Position: $x, $y"
-        echo "Size: $width x $height"
-        echo "States: $states"
+        # Format output using single jq call
+        echo "$window" | jq -r '
+            "Window: \(.id)",
+            "Title: \(.title)",
+            "Class: \(.wm_class)",
+            "Instance: \(.wm_class_instance)",
+            "PID: \(.pid)",
+            "Workspace: \(if .workspace_index == -1 then "all" else .workspace_index end)",
+            "Monitor: \(.monitor_index)",
+            "Focused: \(if .has_focus then "yes" else "no" end)",
+            "Position: \(.frame_rect.x), \(.frame_rect.y)",
+            "Size: \(.frame_rect.width) x \(.frame_rect.height)",
+            "States: \([
+                (if .is_maximized then "maximized" else empty end),
+                (if .is_minimized then "minimized" else empty end),
+                (if .is_fullscreen then "fullscreen" else empty end),
+                (if .is_above then "above" else empty end),
+                (if .is_on_all_workspaces then "sticky" else empty end)
+            ] | if length == 0 then "none" else join(", ") end)"
+        '
     fi
 }
 
