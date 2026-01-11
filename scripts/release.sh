@@ -62,7 +62,8 @@ Options:
     -h, --help    Show this help message
 
 Release Process:
-    1. Update version in window-control@hko9890/metadata.json
+    1a. Update version in window-control@hko9890/metadata.json
+    1b. Update VERSION in wctl to match (e.g., "0.X.0" for metadata version X)
     2. Update CHANGELOG.md with release notes
     3. Commit: git commit -am "chore: bump version to vX"
     4. Create tag: git tag vX
@@ -144,6 +145,40 @@ get_version() {
     ZIP_PATH="$DIST_DIR/$ZIP_NAME"
     
     log_info "Version: $VERSION (tag: $TAG)"
+}
+
+# Check wctl VERSION matches metadata.json version
+check_wctl_version() {
+    log_step "Checking wctl version..."
+    
+    local wctl_path="$PROJECT_ROOT/wctl"
+    
+    if [[ ! -f "$wctl_path" ]]; then
+        log_error "wctl not found at $wctl_path"
+        exit 1
+    fi
+    
+    # Extract VERSION from wctl (line like: VERSION="0.4.0")
+    local wctl_version
+    wctl_version=$(grep -E '^VERSION=' "$wctl_path" | cut -d'"' -f2)
+    
+    if [[ -z "$wctl_version" ]]; then
+        log_error "Could not extract VERSION from wctl"
+        exit 1
+    fi
+    
+    # Expected version is 0.<metadata_version>.0
+    local expected_version="0.${VERSION}.0"
+    
+    if [[ "$wctl_version" != "$expected_version" ]]; then
+        log_error "wctl version mismatch!"
+        log_error "  wctl VERSION: $wctl_version"
+        log_error "  Expected:     $expected_version"
+        log_error "Update VERSION in wctl before releasing."
+        exit 1
+    fi
+    
+    log_info "wctl version matches: $wctl_version"
 }
 
 # Check git tag exists
@@ -369,6 +404,7 @@ main() {
     
     # Step 2: Get version info
     get_version
+    check_wctl_version
     check_tag_exists
     
     # Step 3: Build the extension
