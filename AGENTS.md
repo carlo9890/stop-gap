@@ -159,6 +159,22 @@ If this fails, the code has syntax errors and cannot be committed.
 3. **Methods returning wrong types**: GJS D-Bus has quirks with uint64 - use BigInt or GLib.Variant
 4. **Code changes not taking effect**: Need full GNOME Shell restart, not just disable/enable
 
+## Release Process
+
+**CRITICAL**: All releases MUST be created using the release script.
+
+```bash
+./scripts/release.sh
+```
+
+**Never create releases manually** with `gh release create` or the GitHub web UI. The script ensures:
+- All 3 required assets are included (extension zip, wctl, install-wctl.sh)
+- Version numbers match between metadata.json and wctl
+- Git tags exist and are pushed
+- Release notes are properly formatted
+
+See CONTRIBUTING.md for full release checklist.
+
 ## Requirements Doc
 
 See `gnome-window-control-extension-requirements.md` for full API specification.
