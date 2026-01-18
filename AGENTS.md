@@ -136,6 +136,22 @@ To see `console.log()` output, set `G_MESSAGES_DEBUG=all` before starting GNOME 
 
 For production code, use `console.error()` sparingly for actual errors only.
 
+### JavaScript Syntax Validation
+
+**CRITICAL**: When modifying JavaScript files (extension.js, etc.), you MUST validate syntax before closing any task.
+
+Run this command:
+```bash
+node --check window-control@hko9890/extension.js
+```
+
+If this fails, the code has syntax errors and cannot be committed.
+
+**Task Acceptance Criteria**: All tasks that modify JavaScript code MUST include:
+```markdown
+- [ ] Code passes syntax check (`node --check <file>`)
+```
+
 ### Common Issues
 
 1. **Extension not found**: Run `gnome-extensions list` - if not listed, need restart
