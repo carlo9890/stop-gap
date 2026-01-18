@@ -36,6 +36,14 @@ const DBUS_INTERFACE_XML = `
       <arg type="s" direction="out" name="windows_json"/>
     </method>
 
+
+    <!--
+      ListMonitors: Get all monitors with their properties
+      Returns: s - JSON array of monitor objects
+    -->
+    <method name="ListMonitors">
+      <arg type="s" direction="out" name="monitors_json"/>
+    </method>
     <!--
       Activate: Activate (focus and raise) a window by ID
       Args: t - window ID
@@ -418,6 +426,37 @@ class WindowControlService {
             return JSON.stringify(result);
         } catch (e) {
             console.error(`[Window Control] ListDetailed() error: ${e.message}`);
+            return '[]';
+        }
+
+    // ListMonitors: Get all monitors with their properties
+    ListMonitors() {
+        console.log(`[Window Control] ListMonitors() called`);
+        try {
+            const numMonitors = global.display.get_n_monitors();
+            const primaryMonitor = global.display.get_primary_monitor();
+            const result = [];
+
+            for (let i = 0; i < numMonitors; i++) {
+                const geometry = global.display.get_monitor_geometry(i);
+                const scale = global.display.get_monitor_scale(i);
+
+                result.push({
+                    index: i,
+                    x: geometry.x,
+                    y: geometry.y,
+                    width: geometry.width,
+                    height: geometry.height,
+                    is_primary: i === primaryMonitor,
+                    connector: "",  // Connector name not available via stable API
+                    scale: scale,
+                });
+            }
+
+            console.log(`[Window Control] ListMonitors() returning ${result.length} monitors`);
+            return JSON.stringify(result);
+        } catch (e) {
+            console.error(`[Window Control] ListMonitors() error: ${e.message}`);
             return '[]';
         }
     }
