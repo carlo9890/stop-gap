@@ -428,6 +428,7 @@ class WindowControlService {
             console.error(`[Window Control] ListDetailed() error: ${e.message}`);
             return '[]';
         }
+    }
 
     // ListMonitors: Get all monitors with their properties
     ListMonitors() {
