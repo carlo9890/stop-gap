@@ -162,6 +162,19 @@ const DBUS_INTERFACE_XML = `
       <arg type="i" direction="out" name="height"/>
     </method>
 
+
+    <!--
+      GetWorkarea: Get usable workspace area for a monitor
+      Args: i - monitor index
+      Returns: (iiii) - x, y, width, height (-1,-1,-1,-1 if invalid)
+    -->
+    <method name="GetWorkarea">
+      <arg type="i" direction="in" name="monitor_index"/>
+      <arg type="i" direction="out" name="x"/>
+      <arg type="i" direction="out" name="y"/>
+      <arg type="i" direction="out" name="width"/>
+      <arg type="i" direction="out" name="height"/>
+    </method>
     <!-- State Methods -->
 
     <!--
@@ -634,6 +647,34 @@ class WindowControlService {
             return [-1, -1, -1, -1];
         } catch (e) {
             console.error(`[Window Control] GetGeometry() error: ${e.message}`);
+            return [-1, -1, -1, -1];
+        }
+    }
+
+    // GetWorkarea: Get usable workspace area for a monitor
+    GetWorkarea(monitorIndex) {
+        console.log(`[Window Control] GetWorkarea(${monitorIndex}) called`);
+        try {
+            // Validate monitor index
+            const numMonitors = global.display.get_n_monitors();
+            if (typeof monitorIndex !== "number" ||
+                !Number.isFinite(monitorIndex) ||
+                monitorIndex < 0 ||
+                monitorIndex >= numMonitors) {
+                console.log(`[Window Control] GetWorkarea: Invalid monitor index ${monitorIndex} (valid: 0-${numMonitors-1})`);
+                return [-1, -1, -1, -1];
+            }
+
+            // Get active workspace
+            const workspace = global.workspace_manager.get_active_workspace();
+
+            // Get work area for the specified monitor
+            const rect = workspace.get_work_area_for_monitor(monitorIndex);
+
+            console.log(`[Window Control] GetWorkarea(${monitorIndex}) -> (${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`);
+            return [rect.x, rect.y, rect.width, rect.height];
+        } catch (e) {
+            console.error(`[Window Control] GetWorkarea() error: ${e.message}`);
             return [-1, -1, -1, -1];
         }
     }
