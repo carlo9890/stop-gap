@@ -1,5 +1,19 @@
 # Changelog
 
+## v6 (2026-03-23)
+
+### Added
+- Added `wctl place <ID> <X> <Y> <WIDTH> <HEIGHT>` for workarea-relative window placement
+- Added support for alignment keywords (`left|center|right`, `top|center|bottom`) and percentage sizes in `wctl place`
+
+### Changed
+- Reused shared window/workarea lookup helpers in `wctl` for placement and positioning commands
+- Extended shell completion and help output to cover the new `place` command
+
+### Testing
+- Added modification-test coverage for `wctl place`
+- Updated help tests and verified query tests, modification tests, and build validation
+
 ## v4 (2026-01-09)
 
 ### Fixed
