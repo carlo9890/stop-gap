@@ -37,43 +37,6 @@ die() {
     exit 1
 }
 
-# Check if required tools are available
-check_dependencies() {
-    if ! command -v busctl &>/dev/null; then
-        die "busctl not found. Install systemd or systemd-libs package."
-    fi
-    if ! command -v jq &>/dev/null; then
-        die "jq not found. Install jq package."
-    fi
-}
-
-# Check if the Window Control extension is installed and enabled
-check_extension() {
-    # Check dependencies first
-    check_dependencies
-    
-    # Check if extension is installed
-    if ! gnome-extensions list 2>/dev/null | grep -q "window-control@hko9890"; then
-        die "Window Control extension is not installed.
-
-Install it with:
-    gnome-extensions install window-control@hko9890
-
-Or copy manually:
-    cp -r window-control@hko9890 ~/.local/share/gnome-shell/extensions/
-
-Then restart GNOME Shell (log out/in on Wayland) and enable the extension."
-    fi
-
-    # Check if extension is enabled
-    if ! gnome-extensions list --enabled 2>/dev/null | grep -q "window-control@hko9890"; then
-        die "Window Control extension is installed but not enabled.
-
-Enable it with:
-    gnome-extensions enable window-control@hko9890"
-    fi
-}
-
 # Call D-Bus method and return raw output (GVariant format)
 # Usage: dbus_call METHOD [ARGS...]
 dbus_call() {
@@ -1051,7 +1014,7 @@ main() {
     local cmd="$1"
     shift
     
-    # Skip extension check for help, version, and completion commands
+    # Handle help, version, and completion commands (no D-Bus needed)
     case "$cmd" in
         help|--help|-h)
             show_help
@@ -1081,9 +1044,6 @@ main() {
             esac
             ;;
     esac
-    
-    # Check extension is installed and enabled before running commands
-    check_extension
     
     case "$cmd" in
         # Listing commands
