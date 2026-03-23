@@ -126,6 +126,12 @@ wctl resize 12345 1920 1080
 # Move and resize in one call
 wctl move-resize 12345 0 0 960 1080
 
+# Place a window using workarea-relative tokens
+wctl place 12345 center top 50% 100%
+
+# Exact pixel placement still works
+wctl place 12345 1280 32 3840 1408
+
 # Move to monitor
 wctl to-monitor 12345 1
 
@@ -142,6 +148,13 @@ wctl close 12345
 # Help
 wctl --help
 ```
+
+`wctl place` is a higher-level CLI convenience built on top of the existing
+geometry methods. X and Y accept either absolute pixel coordinates or
+alignment keywords (`left|center|right` and `top|center|bottom`). Width and
+height accept either absolute pixels or percentages such as `50%` and `100%`.
+Percentages are resolved against the monitor workarea, not the raw monitor
+size, so panels and docks are respected.
 
 ### Using gdbus Directly
 

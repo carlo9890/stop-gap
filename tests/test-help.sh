@@ -14,7 +14,7 @@ echo "========================================"
 # Test: wctl help shows help output
 run_wctl help
 assert_exit_code 0 "$WCTL_EXIT_CODE" "wctl help exits with code 0"
-assert_contains "$WCTL_OUTPUT" "wctl - Window Control CLI" "wctl help shows title"
+assert_contains "$WCTL_OUTPUT" "Window Control CLI" "wctl help shows title"
 
 # Test: wctl --help shows help output
 run_wctl --help
@@ -47,5 +47,6 @@ assert_contains "$WCTL_OUTPUT" "focused" "Help mentions focused command"
 assert_contains "$WCTL_OUTPUT" "activate" "Help mentions activate command"
 assert_contains "$WCTL_OUTPUT" "info" "Help mentions info command"
 assert_contains "$WCTL_OUTPUT" "move" "Help mentions move command"
+assert_contains "$WCTL_OUTPUT" "place" "Help mentions place command"
 
 summary

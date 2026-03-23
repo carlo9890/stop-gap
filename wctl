@@ -97,6 +97,120 @@ truncate() {
     fi
 }
 
+# Get a single window from ListDetailed JSON
+# Usage: get_window_json_by_id <ID>
+get_window_json_by_id() {
+    local id="${1:-}"
+
+    [[ -z "$id" ]] && die "Window ID must be a number"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+
+    local json window
+    json=$(dbus_call_json "ListDetailed")
+    window=$(echo "$json" | jq -ce --arg id "$id" '.[] | select(.id == ($id | tonumber))' 2>/dev/null) || {
+        die "Window not found: $id"
+    }
+
+    echo "$window"
+}
+
+# Parse a GetWorkarea response into shell-friendly values
+# Usage: parse_workarea_rect "(x, y, width, height)"
+parse_workarea_rect() {
+    local raw="$1"
+
+    if [[ "$raw" =~ ^\((-?[0-9]+),\ (-?[0-9]+),\ ([0-9]+),\ ([0-9]+)\)$ ]]; then
+        echo "${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]} ${BASH_REMATCH[4]}"
+    else
+        die "Failed to parse workarea: $raw"
+    fi
+}
+
+# Get workarea for a monitor
+# Usage: get_workarea_by_monitor <MONITOR_INDEX>
+get_workarea_by_monitor() {
+    local monitor_index="$1"
+    local raw
+
+    raw=$(dbus_call "GetWorkarea" "$monitor_index")
+    parse_workarea_rect "$raw"
+}
+
+# Get workarea for a window JSON object from ListDetailed
+# Usage: get_workarea_for_window_json <WINDOW_JSON>
+get_workarea_for_window_json() {
+    local window="$1"
+    local monitor_index
+
+    monitor_index=$(echo "$window" | jq -r '.monitor_index')
+    get_workarea_by_monitor "$monitor_index"
+}
+
+# Resolve WIDTH/HEIGHT token for place command
+# Usage: resolve_place_size <TOKEN> <WORKAREA_SIZE> <LABEL>
+resolve_place_size() {
+    local token="$1"
+    local base_size="$2"
+    local label="$3"
+    local value
+
+    if [[ "$token" =~ ^[1-9][0-9]*$ ]]; then
+        echo "$token"
+        return
+    fi
+
+    if [[ "$token" =~ ^([0-9]+)%$ ]]; then
+        value=$((base_size * BASH_REMATCH[1] / 100))
+        (( value > 0 )) || die "${label} percentage resolves to 0 pixels: $token"
+        echo "$value"
+        return
+    fi
+
+    die "Invalid ${label}: $token. Use a positive number or percentage like 50%"
+}
+
+# Resolve X/Y token for place command
+# Usage: resolve_place_position <TOKEN> <x|y> <WORKAREA_POS> <WORKAREA_SIZE> <WINDOW_SIZE>
+resolve_place_position() {
+    local token="$1"
+    local axis="$2"
+    local workarea_pos="$3"
+    local workarea_size="$4"
+    local window_size="$5"
+
+    if [[ "$token" =~ ^-?[0-9]+$ ]]; then
+        echo "$token"
+        return
+    fi
+
+    case "$axis:$token" in
+        x:left)
+            echo "$workarea_pos"
+            ;;
+        x:center)
+            echo $((workarea_pos + (workarea_size - window_size) / 2))
+            ;;
+        x:right)
+            echo $((workarea_pos + workarea_size - window_size))
+            ;;
+        y:top)
+            echo "$workarea_pos"
+            ;;
+        y:center)
+            echo $((workarea_pos + (workarea_size - window_size) / 2))
+            ;;
+        y:bottom)
+            echo $((workarea_pos + workarea_size - window_size))
+            ;;
+        x:*)
+            die "Invalid X position: $token. Use a number or left|center|right"
+            ;;
+        y:*)
+            die "Invalid Y position: $token. Use a number or top|center|bottom"
+            ;;
+    esac
+}
+
 # Show help message
 show_help() {
     cat << EOF
@@ -129,6 +243,7 @@ GEOMETRY COMMANDS:
     move-resize <ID> <X> <Y> <W> <H>    Move and resize atomically
 
 TILING & POSITIONING:
+    place <ID> <X> <Y> <W> <H>          Place window using pixels and workarea-relative tokens
     tile <ID> <position>                Tile window to 4x2 grid position
     center <ID> [horizontal|vertical|both]  Center window on screen
 
@@ -159,6 +274,8 @@ EXAMPLES:
     wctl info 12345 --json            # Get window info as JSON
     wctl move 12345 100 100           # Move window to (100, 100)
     wctl resize 12345 800 600         # Resize to 800x600
+    wctl place 12345 center top 50% 100%  # Centered half-width, full workarea height
+    wctl place 12345 1280 32 3840 1408    # Exact pixel placement
     wctl tile 12345 top-left          # Tile to top-left of 4x2 grid
     wctl tile 12345 center            # Tile to center of grid
     wctl center 12345                 # Center on screen (both axes)
@@ -514,32 +631,12 @@ Valid positions:
   top-left, top-center, top-right
   left, center, right
   bottom-left, bottom-center, bottom-right"
-    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
     
-    # Get window info to find monitor
-    local json window
-    json=$(dbus_call_json "ListDetailed")
-    window=$(echo "$json" | jq -e --arg id "$id" '.[] | select(.id == ($id | tonumber))' 2>/dev/null) || {
-        die "Window not found: $id"
-    }
-    
-    local monitor_index
-    monitor_index=$(echo "$window" | jq -r '.monitor_index')
-    
-    # Get workarea for window's monitor
-    local raw
-    raw=$(dbus_call "GetWorkarea" "$monitor_index")
-    
-    # Parse workarea - format is (x, y, width, height)
+    local window
+    window=$(get_window_json_by_id "$id")
+
     local wa_x wa_y wa_w wa_h
-    if [[ "$raw" =~ ^\(([0-9]+),\ ([0-9]+),\ ([0-9]+),\ ([0-9]+)\)$ ]]; then
-        wa_x="${BASH_REMATCH[1]}"
-        wa_y="${BASH_REMATCH[2]}"
-        wa_w="${BASH_REMATCH[3]}"
-        wa_h="${BASH_REMATCH[4]}"
-    else
-        die "Failed to parse workarea: $raw"
-    fi
+    read -r wa_x wa_y wa_w wa_h <<< "$(get_workarea_for_window_json "$window")"
     
     # Calculate grid cell dimensions (4x2 grid)
     local cell_w=$((wa_w / 4))
@@ -625,12 +722,8 @@ cmd_center() {
             ;;
     esac
     
-    # Get window info
-    local json window
-    json=$(dbus_call_json "ListDetailed")
-    window=$(echo "$json" | jq -e --arg id "$id" '.[] | select(.id == ($id | tonumber))' 2>/dev/null) || {
-        die "Window not found: $id"
-    }
+    local window
+    window=$(get_window_json_by_id "$id")
     
     # Get current window geometry
     local win_x win_y win_w win_h
@@ -639,24 +732,8 @@ cmd_center() {
     win_w=$(echo "$window" | jq -r '.frame_rect.width')
     win_h=$(echo "$window" | jq -r '.frame_rect.height')
     
-    # Get monitor index
-    local monitor_index
-    monitor_index=$(echo "$window" | jq -r '.monitor_index')
-    
-    # Get workarea for window's monitor
-    local raw
-    raw=$(dbus_call "GetWorkarea" "$monitor_index")
-    
-    # Parse workarea - format is (x, y, width, height)
     local wa_x wa_y wa_w wa_h
-    if [[ "$raw" =~ ^\(([0-9]+),\ ([0-9]+),\ ([0-9]+),\ ([0-9]+)\)$ ]]; then
-        wa_x="${BASH_REMATCH[1]}"
-        wa_y="${BASH_REMATCH[2]}"
-        wa_w="${BASH_REMATCH[3]}"
-        wa_h="${BASH_REMATCH[4]}"
-    else
-        die "Failed to parse workarea: $raw"
-    fi
+    read -r wa_x wa_y wa_w wa_h <<< "$(get_workarea_for_window_json "$window")"
     
     # Calculate centered positions
     local new_x="$win_x"
@@ -685,6 +762,44 @@ cmd_center() {
                 echo "Window centered"
                 ;;
         esac
+    else
+        echo "Window not found"
+        exit 1
+    fi
+}
+
+# Place window using a mix of absolute pixels and workarea-relative tokens
+cmd_place() {
+    local id="${1:-}"
+    local x_token="${2:-}"
+    local y_token="${3:-}"
+    local width_token="${4:-}"
+    local height_token="${5:-}"
+
+    [[ $# -ne 5 ]] && die "Usage: wctl place <ID> <X> <Y> <WIDTH> <HEIGHT>
+X:      number or left|center|right
+Y:      number or top|center|bottom
+WIDTH:  positive number or percentage like 50%
+HEIGHT: positive number or percentage like 100%"
+    [[ ! "$id" =~ ^[0-9]+$ ]] && die "Window ID must be a number"
+
+    local window
+    window=$(get_window_json_by_id "$id")
+
+    local wa_x wa_y wa_w wa_h
+    read -r wa_x wa_y wa_w wa_h <<< "$(get_workarea_for_window_json "$window")"
+
+    local width height x y
+    width=$(resolve_place_size "$width_token" "$wa_w" "WIDTH")
+    height=$(resolve_place_size "$height_token" "$wa_h" "HEIGHT")
+    x=$(resolve_place_position "$x_token" "x" "$wa_x" "$wa_w" "$width")
+    y=$(resolve_place_position "$y_token" "y" "$wa_y" "$wa_h" "$height")
+
+    local raw
+    raw=$(dbus_call "MoveResize" "$id" "$x" "$y" "$width" "$height")
+
+    if [[ "$raw" == "(true,)" ]]; then
+        echo "Window placed"
     else
         echo "Window not found"
         exit 1
@@ -796,8 +911,8 @@ _wctl() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="list focused info activate focus move resize move-resize minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
-    local id_commands="info focus move resize move-resize minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close"
+    local commands="list focused info activate focus move resize move-resize place tile center minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close help completion"
+    local id_commands="info focus move resize move-resize place tile center minimize unminimize maximize unmaximize fullscreen unfullscreen above sticky close"
 
     # Complete command names
     if [[ $cword -eq 1 ]]; then
@@ -816,6 +931,15 @@ _wctl() {
                 COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
             elif [[ $cword -eq 3 ]]; then
                 COMPREPLY=($(compgen -W "--json" -- "$cur"))
+            fi
+            ;;
+        place)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "$(_wctl_get_window_ids)" -- "$cur"))
+            elif [[ $cword -eq 3 ]]; then
+                COMPREPLY=($(compgen -W "left center right" -- "$cur"))
+            elif [[ $cword -eq 4 ]]; then
+                COMPREPLY=($(compgen -W "top center bottom" -- "$cur"))
             fi
             ;;
         activate)
@@ -888,6 +1012,9 @@ _wctl() {
         'move:Move window to position'
         'resize:Resize window'
         'move-resize:Move and resize window'
+        'place:Place window with relative sizing'
+        'tile:Tile window to a preset grid position'
+        'center:Center window on screen'
         'minimize:Minimize window'
         'unminimize:Restore from minimize'
         'maximize:Maximize window'
@@ -949,6 +1076,14 @@ _wctl() {
                         '3:y position:' \
                         '4:width:' \
                         '5:height:'
+                    ;;
+                place)
+                    _arguments \
+                        '1:window id:_wctl_window_ids' \
+                        '2:x position or keyword:(left center right)' \
+                        '3:y position or keyword:(top center bottom)' \
+                        '4:width or percentage:' \
+                        '5:height or percentage:'
                     ;;
                 above|sticky)
                     _arguments \
@@ -1083,6 +1218,9 @@ main() {
             ;;
         
         # Tiling & Positioning commands
+        place)
+            cmd_place "$@"
+            ;;
         tile)
             cmd_tile "$@"
             ;;

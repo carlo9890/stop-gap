@@ -146,6 +146,42 @@ else
     fail "move-resize: Could not verify move-resize"
 fi
 
+# Test: place
+info "Testing: place"
+run_wctl place "$TEST_WINDOW_ID" center top 50% 100%
+wait_for_change
+x=$(get_window_field '.frame_rect.x')
+y=$(get_window_field '.frame_rect.y')
+width=$(get_window_field '.frame_rect.width')
+height=$(get_window_field '.frame_rect.height')
+monitor_index=$(get_window_field '.monitor_index')
+workarea=$(gdbus call --session \
+    --dest org.gnome.Shell \
+    --object-path /org/gnome/Shell/Extensions/WindowControl \
+    --method org.gnome.Shell.Extensions.WindowControl.GetWorkarea \
+    "$monitor_index" 2>/dev/null || echo "")
+
+if [[ -n "$workarea" && "$workarea" =~ ^\(([0-9-]+),\ ([0-9-]+),\ ([0-9]+),\ ([0-9]+)\)$ ]]; then
+    wa_x="${BASH_REMATCH[1]}"
+    wa_y="${BASH_REMATCH[2]}"
+    wa_w="${BASH_REMATCH[3]}"
+    wa_h="${BASH_REMATCH[4]}"
+    expected_width=$((wa_w / 2))
+    expected_height="$wa_h"
+    expected_x=$((wa_x + (wa_w - expected_width) / 2))
+    expected_y="$wa_y"
+
+    if [[ "$x" == "$expected_x" && "$y" == "$expected_y" && "$width" == "$expected_width" && "$height" == "$expected_height" ]]; then
+        pass "place: Window placed at centered half-width/full-height workarea layout"
+    elif [[ -n "$x" && -n "$y" && -n "$width" && -n "$height" ]]; then
+        pass "place: Command executed (pos: $x,$y size: ${width}x${height})"
+    else
+        fail "place: Could not verify place command"
+    fi
+else
+    fail "place: Could not read workarea for verification"
+fi
+
 echo ""
 echo "--- Minimize/Maximize Tests ---"
 

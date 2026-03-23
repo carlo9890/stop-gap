@@ -399,11 +399,11 @@ wctl activate -c kitty       # Activate by WM class
 wctl move 12345 100 100              # Move to x=100, y=100
 wctl resize 12345 1920 1080          # Resize to 1920x1080
 wctl move-resize 12345 0 0 960 1080  # Move and resize
-wctl geometry 12345                   # Get current geometry
+wctl place 12345 center top 50% 100% # Place with workarea-relative tokens
+wctl info 12345                      # Get current geometry/details
 
 # Monitor & Workspace
 wctl to-monitor 12345 1      # Move to monitor 1
-wctl to-workspace 12345 2    # Move to workspace 2
 
 # State
 wctl minimize 12345
