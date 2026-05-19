@@ -19,7 +19,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ### Prerequisites
 
-- GNOME Shell 45, 46, or 47
+- GNOME Shell 45, 46, 47, 48, 49, or 50
 - `gnome-extensions` CLI tool
 - Basic knowledge of GJS (GNOME JavaScript)
 

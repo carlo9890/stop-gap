@@ -1,5 +1,16 @@
 # Changelog
 
+## v7 (2026-05-19)
+
+### Added
+- Declared support for GNOME Shell 48, 49, and 50 in `metadata.json`
+
+### Fixed
+- Resolved window actors through `global.compositor.get_window_actors()` on GNOME 48+, with a fallback to `global.get_window_actors()` for 45–47
+
+### Documentation
+- Updated README, CONTRIBUTING, extension README, and the requirements doc to reflect the expanded shell-version range
+
 ## v6 (2026-03-23)
 
 ### Added

@@ -312,18 +312,27 @@ class WindowControlService {
         );
     }
 
+    // Helper: Get all window actors across GNOME Shell versions.
+    // GNOME 48+ exposes this on global.compositor; older versions only have global.get_window_actors().
+    _getWindowActors() {
+        if (global.compositor && typeof global.compositor.get_window_actors === 'function') {
+            return global.compositor.get_window_actors();
+        }
+        return global.get_window_actors();
+    }
+
     // Helper: Get all windows (NORMAL type only)
     _getAllWindows() {
-        const actors = global.get_window_actors();
+        const actors = this._getWindowActors();
         const windows = [];
-        
+
         for (const actor of actors) {
             const metaWindow = actor.get_meta_window();
             if (metaWindow && metaWindow.get_window_type() === Meta.WindowType.NORMAL) {
                 windows.push(metaWindow);
             }
         }
-        
+
         console.log(`[Window Control] _getAllWindows(): found ${actors.length} actors, ${windows.length} normal windows`);
         return windows;
     }
