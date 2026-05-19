@@ -438,7 +438,7 @@ window-control@example.com/
   "name": "Window Control",
   "description": "D-Bus interface for listing and controlling windows",
   "version": 1,
-  "shell-version": ["45", "46", "47"],
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
   "url": "https://github.com/username/gnome-window-control"
 }
 ```
@@ -449,12 +449,15 @@ window-control@example.com/
 
 ### Target GNOME Versions
 - GNOME 45+ (current LTS and newer)
-- Note: GNOME 48 changes `global.get_window_actors()` to `global.compositor.get_window_actors()` - handle both
+- Note: GNOME 48+ exposes window actors on `global.compositor.get_window_actors()`; the extension probes for it at runtime and falls back to `global.get_window_actors()` on 45–47.
 
 ### Testing Matrix
 - [ ] GNOME 45 (Ubuntu 24.04 LTS)
-- [ ] GNOME 46 (Fedora 40, current)
+- [ ] GNOME 46 (Fedora 40)
 - [ ] GNOME 47 (Fedora 41)
+- [ ] GNOME 48 (Fedora 42)
+- [ ] GNOME 49 (Fedora 43)
+- [ ] GNOME 50 (Fedora 44)
 
 ---
 
